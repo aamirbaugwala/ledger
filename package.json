@@ -1,0 +1,24 @@
+{
+  "name": "ledger",
+  "version": "1.0.0",
+  "description": "i have a livestock goat selling business and i do not want to be traditional and write all the records in a book on what is the weight of the goat, wht is the cost price behind it or what is the selling rate of that particular goat based on weight and so on, what can we do to innovate and make this work easiser",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cloudinary": "^1.41.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^4.0.0",
+    "pg": "^8.20.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
