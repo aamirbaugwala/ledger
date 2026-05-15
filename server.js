@@ -1,4 +1,5 @@
-require('dotenv').config();
+// Load .env only in local dev (Vercel injects env vars directly)
+if (!process.env.VERCEL) require('dotenv').config();
 const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
@@ -34,7 +35,7 @@ if (useCloudinary) {
   app.locals.cloudinary = cloudinary;
   console.log('📸 Using Cloudinary for photo storage');
 } else {
-  const uploadsDir = path.join(__dirname, 'public', 'uploads');
+  const uploadsDir = path.join('/tmp', 'uploads');
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   const diskStorage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),
@@ -299,5 +300,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`\n🐐 Goat Ledger → http://localhost:${PORT}  |  📱 http://192.168.0.178:${PORT}\n`));
+// Only listen when running locally — Vercel handles this automatically
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => console.log(`\n🐐 Goat Ledger → http://localhost:${PORT}  |  📱 http://192.168.0.178:${PORT}\n`));
+}
 module.exports = app;   // needed for Vercel
