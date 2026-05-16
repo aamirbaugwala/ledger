@@ -2,10 +2,6 @@
 //  dashboard.js — Dashboard section
 // ═══════════════════════════════════════════════════════════
 
-function destroyChart(id) {
-  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
-}
-
 async function loadDashboard() {
   const d = await api('/api/dashboard');
   if (!d) { showToast('Failed to load dashboard', 'error'); return; }
@@ -66,78 +62,6 @@ async function loadDashboard() {
     }
   }
 
-  // Monthly chart
-  destroyChart('monthlyChart');
-  document.getElementById('monthlyChartMsg').textContent = '';
-  const ml = d.monthly;
-  if (ml.length) {
-    charts.monthly = new Chart(document.getElementById('monthlyChart'), {
-      type: 'bar',
-      data: {
-        labels: ml.map(m => m.mon),
-        datasets: [
-          { label: 'Revenue', data: ml.map(m => +m.revenue), backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 5, borderSkipped: false },
-          { label: 'Cost',    data: ml.map(m => +m.cost),    backgroundColor: 'rgba(220,38,38,0.5)', borderRadius: 5, borderSkipped: false },
-          { label: 'Profit',  data: ml.map(m => +m.profit),  type: 'line',
-            borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.08)',
-            pointBackgroundColor: '#16a34a', pointRadius: 4, tension: 0.35, fill: true, borderWidth: 2 }
-        ]
-      },
-      options: {
-        responsive: true,
-        interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } } },
-        scales: { y: { beginAtZero: true, grid: { color: '#f3f4f6' }, ticks: { callback: v => '₹' + fmt(v) } } }
-      }
-    });
-  } else {
-    document.getElementById('monthlyChartMsg').textContent = 'No sales data yet';
-  }
-
-  // Status doughnut
-  destroyChart('breedChart');
-  const total = d.availableCount + d.bookedCount + d.soldCount;
-  if (total > 0) {
-    charts.breed = new Chart(document.getElementById('breedChart'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Available', 'Booked', 'Sold'],
-        datasets: [{ data: [d.availableCount, d.bookedCount, d.soldCount],
-          backgroundColor: ['#16a34a', '#f59e0b', '#6b7280'],
-          borderWidth: 0, hoverOffset: 8 }]
-      },
-      options: {
-        responsive: true, cutout: '65%',
-        plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} goats` } }
-        }
-      }
-    });
-  }
-
-  // Payment mode doughnut
-  destroyChart('weightChart');
-  document.getElementById('weightChartMsg').textContent = '';
-  if (d.payModes && d.payModes.length) {
-    const modeLabels = { cash: '💵 Cash', online: '📱 Online', 'cash+online': '💵+📱 Split' };
-    charts.weight = new Chart(document.getElementById('weightChart'), {
-      type: 'doughnut',
-      data: {
-        labels: d.payModes.map(m => modeLabels[m.mode] || m.mode),
-        datasets: [{ data: d.payModes.map(m => m.cnt),
-          backgroundColor: ['#16a34a', '#2563eb', '#7c3aed'],
-          borderWidth: 0, hoverOffset: 6 }]
-      },
-      options: {
-        responsive: true, cutout: '60%',
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } }
-      }
-    });
-  } else {
-    document.getElementById('weightChartMsg').textContent = 'No payment data yet';
-  }
-
   // Pay breakdown cards
   const pb = d.payBreakdown || {};
   const totalCash   = (pb.adv_cash   || 0) + (pb.fin_cash   || 0);
@@ -169,30 +93,6 @@ async function loadDashboard() {
       <div class="pbc-label">Yet to Collect</div>
       <div class="pbc-detail">From ${d.bookedCount} booked goat${d.bookedCount !== 1 ? 's' : ''}</div>
     </div>`;
-
-  // Breed profit bar
-  destroyChart('breedProfitChart');
-  const breeds = d.byBreed;
-  if (breeds.length) {
-    charts.breedProfit = new Chart(document.getElementById('breedProfitChart'), {
-      type: 'bar',
-      data: {
-        labels: breeds.map(b => b.breed || 'Unknown'),
-        datasets: [
-          { label: 'Total',  data: breeds.map(b => +b.total),        backgroundColor: '#dcfce7', borderRadius: 4, maxBarThickness: 40 },
-          { label: 'Sold',   data: breeds.map(b => +b.sold_count),   backgroundColor: '#16a34a', borderRadius: 4, maxBarThickness: 40 },
-          { label: 'Booked', data: breeds.map(b => +b.booked_count), backgroundColor: '#f59e0b', borderRadius: 4, maxBarThickness: 40 },
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } } },
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f3f4f6' } }
-        }
-      }
-    });
-  }
 
   // Recent activity
   const tbody = document.querySelector('#recentSalesTable tbody');

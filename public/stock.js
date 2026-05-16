@@ -84,11 +84,11 @@ function _bulkExportStockCSV() {
   if (!n) return;
   const selected = allStock.filter(g => _selectedStockIds.has(g.id));
   const headers = ['Goat ID','Breed','Purchase Date','Buy Weight (kg)','Cost Price (₹)','Extra Costs (₹)',
-                   'Total Cost (₹)','Rate/kg (exp. wt)','Status','Added By','Notes'];
+                   'Total Cost (₹)','Rate/kg (buy wt)','Status','Added By','Notes'];
   const rows = selected.map(g => {
     const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
-    const expWt     = parseFloat(g.weight_kg || 0) * 0.95;
-    const rate      = expWt > 0 ? Math.round(totalCost / expWt) : 0;
+    const buyWt     = parseFloat(g.weight_kg || 0);
+    const rate      = buyWt > 0 ? Math.round(totalCost / buyWt) : 0;
     const purchDate = g.purchase_date ? String(g.purchase_date).slice(0,10) : '';
     return [g.goat_id, g.breed || '', purchDate, g.weight_kg,
             parseFloat(g.cost_price || 0).toFixed(0), parseFloat(g.extra_costs || 0).toFixed(0),
@@ -128,12 +128,12 @@ function _sortStockGoats(goats) {
       va = parseFloat(a.cost_price || 0) + parseFloat(a.extra_costs || 0);
       vb = parseFloat(b.cost_price || 0) + parseFloat(b.extra_costs || 0);
     } else if (col === 'rate_kg') {
-      const expA = parseFloat(a.weight_kg || 0) * 0.95;
-      const expB = parseFloat(b.weight_kg || 0) * 0.95;
+      const buyA  = parseFloat(a.weight_kg || 0);
+      const buyB  = parseFloat(b.weight_kg || 0);
       const costA = parseFloat(a.cost_price || 0) + parseFloat(a.extra_costs || 0);
       const costB = parseFloat(b.cost_price || 0) + parseFloat(b.extra_costs || 0);
-      va = expA > 0 ? costA / expA : 0;
-      vb = expB > 0 ? costB / expB : 0;
+      va = buyA > 0 ? costA / buyA : 0;
+      vb = buyB > 0 ? costB / buyB : 0;
     } else if (col === 'weight_kg') {
       va = parseFloat(a.weight_kg || 0);
       vb = parseFloat(b.weight_kg || 0);
@@ -221,7 +221,7 @@ function renderStockTable(goats) {
     const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
     const buyWt     = parseFloat(g.weight_kg || 0);
     const expWt     = (buyWt * 0.95).toFixed(1);
-    const ratePerKg = parseFloat(expWt) > 0 ? Math.round(totalCost / parseFloat(expWt)) : 0;
+    const ratePerKg = buyWt > 0 ? Math.round(totalCost / buyWt) : 0;
     const isBooked  = g.status === 'booked';
     const advance   = parseFloat(g.advance_amount || 0);
     const remaining = isBooked ? parseFloat(g.selling_price || 0) - advance : 0;
@@ -243,7 +243,7 @@ function renderStockTable(goats) {
 
     const rateCell = `
       <span class="stc-main stk-blue">₹${fmt(ratePerKg)}/kg</span>
-      <span class="stc-sub">on exp. wt</span>`;
+      <span class="stc-sub">on buy wt</span>`;
 
     let statusCell;
     if (isBooked) {
@@ -303,7 +303,7 @@ function renderStockTable(goats) {
             <th onclick="_setStockSort('weight_kg')" class="sortable num">Buy Wt ${_stockSortIcon('weight_kg')}</th>
             <th onclick="_setStockSort('weight_kg')" class="sortable num">Exp. Wt ${_stockSortIcon('weight_kg')}</th>
             <th onclick="_setStockSort('total_cost')" class="sortable num">Total Cost ${_stockSortIcon('total_cost')}</th>
-            <th onclick="_setStockSort('rate_kg')" class="sortable num">Rate/kg <small style="font-weight:400;text-transform:none">(exp. wt)</small> ${_stockSortIcon('rate_kg')}</th>
+            <th onclick="_setStockSort('rate_kg')" class="sortable num">Rate/kg <small style="font-weight:400;text-transform:none">(buy wt)</small> ${_stockSortIcon('rate_kg')}</th>
             <th onclick="_setStockSort('status')" class="sortable">Status ${_stockSortIcon('status')}</th>
             <th>Actions</th>
           </tr>
@@ -325,7 +325,7 @@ function renderStockCards(goats) {
     const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
     const buyWt     = parseFloat(g.weight_kg || 0);
     const expWt     = (buyWt * 0.95).toFixed(1);
-    const ratePerKg = parseFloat(expWt) > 0 ? Math.round(totalCost / parseFloat(expWt)) : 0;
+    const ratePerKg = buyWt > 0 ? Math.round(totalCost / buyWt) : 0;
     const isBooked  = g.status === 'booked';
     const advance   = parseFloat(g.advance_amount || 0);
     const remaining = isBooked ? parseFloat(g.selling_price || 0) - advance : 0;
@@ -378,7 +378,7 @@ function renderStockCards(goats) {
             <span class="stk-val">₹${fmt(totalCost)}</span>
           </div>
           <div class="stk-info-item">
-            <span class="stk-lbl">Rate/kg (exp. wt)</span>
+            <span class="stk-lbl">Rate/kg (buy wt)</span>
             <span class="stk-val stk-blue">₹${fmt(ratePerKg)}</span>
           </div>
           ${g.purchase_date ? `
@@ -642,22 +642,23 @@ async function openSellModal(id) {
 
   const totalCost   = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
   const expWeight   = (parseFloat(g.weight_kg) * 0.95).toFixed(2);
-  const ratePerKg   = totalCost / parseFloat(expWeight);   // cost per kg on expected weight
+  const costRatePerKg = parseFloat(g.weight_kg) > 0 ? totalCost / parseFloat(g.weight_kg) : 0;   // cost per kg on buy weight
 
-  document.getElementById('sellId').value          = id;
-  document.getElementById('sellDate').value        = today();
-  document.getElementById('sellPrice').value       = '';
-  document.getElementById('sellWeight').value      = expWeight;   // pre-fill with expected weight
-  document.getElementById('sellAdvance').value     = '0';
-  document.getElementById('sellAdvanceMode').value = '';
-  document.getElementById('sellFinalMode').value   = '';
-  document.getElementById('sellBuyer').value       = g.buyer_name || '';
-  document.getElementById('sellPhone').value       = g.buyer_phone || '';
+  document.getElementById('sellId').value             = id;
+  document.getElementById('sellDate').value           = today();
+  document.getElementById('sellRatePerKg').value      = '';
+  document.getElementById('sellWeight').value         = expWeight;   // pre-fill with expected weight
+  document.getElementById('sellAdvance').value        = '0';
+  document.getElementById('sellAdvanceMode').value    = '';
+  document.getElementById('sellFinalMode').value      = '';
+  document.getElementById('sellBuyer').value          = g.buyer_name || '';
+  document.getElementById('sellPhone').value          = g.buyer_phone || '';
 
   // Store for calculations
-  document.getElementById('sellPrice').dataset.cost       = totalCost;
-  document.getElementById('sellPrice').dataset.ratePerKg  = ratePerKg.toFixed(4);
-  document.getElementById('sellPrice').dataset.goatId     = g.goat_id;
+  document.getElementById('sellRatePerKg').dataset.cost       = totalCost;
+  document.getElementById('sellRatePerKg').dataset.costRate   = costRatePerKg.toFixed(4);
+  document.getElementById('sellRatePerKg').dataset.goatId     = g.goat_id;
+  document.getElementById('sellRatePerKg').dataset.buyWeight  = g.weight_kg;
 
   document.getElementById('sellPreview').classList.add('hidden');
   document.getElementById('sellFormErr').classList.add('hidden');
@@ -669,21 +670,23 @@ async function openSellModal(id) {
     <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
     <div class="d-item"><span class="d-lbl">Expected Weight</span><span class="d-val" style="color:var(--amber)">${expWeight} kg <small style="font-weight:500">(×95%)</small></span></div>
     <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
-    <div class="d-item"><span class="d-lbl">Rate/kg (exp. wt)</span><span class="d-val" style="color:var(--blue)">₹${fmt(Math.round(ratePerKg))}</span></div>`;
+    <div class="d-item"><span class="d-lbl">Cost Rate/kg</span><span class="d-val" style="color:var(--blue)">₹${fmt(Math.round(costRatePerKg))}</span></div>`;
 
   showModal('sellModal');
-  setTimeout(() => document.getElementById('sellPrice').focus(), 150);
+  setTimeout(() => document.getElementById('sellRatePerKg').focus(), 150);
 }
 
 function updateSellPreview() {
-  const sp         = parseFloat(document.getElementById('sellPrice').value)  || 0;
-  const ratePerKg  = parseFloat(document.getElementById('sellPrice').dataset.ratePerKg) || 0;
-  const fallback   = parseFloat(document.getElementById('sellPrice').dataset.cost) || 0;
+  const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
+  const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
+  const fallback   = parseFloat(document.getElementById('sellRatePerKg').dataset.cost) || 0;
   const actualWt   = parseFloat(document.getElementById('sellWeight').value) || 0;
   const advance    = parseFloat(document.getElementById('sellAdvance').value) || 0;
 
-  // Effective cost = rate/kg × actual weight (rate is based on expected weight cost)
-  const effectiveCost = ratePerKg > 0 && actualWt > 0 ? ratePerKg * actualWt : fallback;
+  // Selling price = rate/kg × sale weight
+  const sp = inputRate > 0 && actualWt > 0 ? inputRate * actualWt : 0;
+  // Effective cost = cost rate × actual weight
+  const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : fallback;
 
   const el = document.getElementById('sellPreview');
   if (sp > 0) {
@@ -691,15 +694,13 @@ function updateSellPreview() {
     const remaining = sp - advance;
     const marginPct = effectiveCost > 0 ? ((profit / effectiveCost) * 100).toFixed(1) : 0;
     const profitTxt = profit >= 0
-      ? `✅ Profit: ₹${fmt(profit)} (${marginPct}% margin)`
-      : `❌ Loss: ₹${fmt(Math.abs(profit))}`;
-    const costInfo  = ratePerKg > 0 && actualWt > 0
-      ? `  ·  📐 Eff. cost: ₹${fmt(Math.round(effectiveCost))} (${actualWt}kg × ₹${fmt(Math.round(ratePerKg))})`
-      : '';
+      ? `✅ Profit: ₹${fmt(Math.round(profit))} (${marginPct}% margin)`
+      : `❌ Loss: ₹${fmt(Math.round(Math.abs(profit)))}`;
+    const priceInfo = `  ·  � Total: ₹${fmt(Math.round(sp))} (${actualWt}kg × ₹${fmt(inputRate)}/kg)`;
     const advTxt = advance > 0 && advance < sp
       ? `  ·  📥 Advance: ₹${fmt(advance)}  ·  ⏳ Remaining: ₹${fmt(remaining)}`
       : advance >= sp ? '  ·  ✅ Fully paid' : '';
-    el.textContent = profitTxt + costInfo + advTxt;
+    el.textContent = profitTxt + priceInfo + advTxt;
     el.className   = `profit-preview ${profit >= 0 ? 'pos' : 'neg'}`;
     el.classList.remove('hidden');
   } else {
@@ -713,24 +714,24 @@ async function confirmSale(e) {
   const errEl = document.getElementById('sellFormErr');
   errEl.classList.add('hidden');
 
-  const sp         = parseFloat(document.getElementById('sellPrice').value);
-  const cost       = parseFloat(document.getElementById('sellPrice').dataset.cost);
-  const ratePerKg  = parseFloat(document.getElementById('sellPrice').dataset.ratePerKg) || 0;
-  const goatId     = document.getElementById('sellPrice').dataset.goatId;
+  const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value);
+  const cost       = parseFloat(document.getElementById('sellRatePerKg').dataset.cost);
+  const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
+  const goatId     = document.getElementById('sellRatePerKg').dataset.goatId;
   const advance    = parseFloat(document.getElementById('sellAdvance').value) || 0;
   const buyerName  = document.getElementById('sellBuyer').value.trim();
   const buyerPhone = document.getElementById('sellPhone').value.trim();
   const advMode    = document.getElementById('sellAdvanceMode').value;
   const finalMode  = document.getElementById('sellFinalMode').value;
   const saleWeight = document.getElementById('sellWeight').value;
+  const actualWt   = parseFloat(saleWeight) || 0;
+  const sp         = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
+  const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : cost;
   const isBooked   = advance > 0 && advance < sp;
   const showErr    = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
-  // Use effective cost for loss check
-  const actualWt      = parseFloat(saleWeight) || 0;
-  const effectiveCost = ratePerKg > 0 && actualWt > 0 ? ratePerKg * actualWt : cost;
-
-  if (!sp || sp <= 0)  return showErr('⚠️ Selling price must be greater than 0.');
+  if (!inputRate || inputRate <= 0) return showErr('⚠️ Rate per kg must be greater than 0.');
+  if (!actualWt || actualWt <= 0)   return showErr('⚠️ Sale weight is required to calculate price.');
   if (sp > 10000000)   return showErr('⚠️ Selling price seems too high. Please check.');
   if (!buyerName)      return showErr('⚠️ Buyer name is required.');
   if (!buyerPhone)     return showErr('⚠️ Buyer phone is required.');
@@ -742,7 +743,7 @@ async function confirmSale(e) {
   const saleDate = document.getElementById('sellDate').value;
   if (!saleDate)        return showErr('⚠️ Sale date is required.');
   if (saleDate > today()) return showErr('⚠️ Sale date cannot be in the future.');
-  if (sp < effectiveCost && !confirm(`⚠️ Selling at a LOSS of ₹${fmt(Math.round(effectiveCost - sp))} (based on actual weight ${actualWt}kg). Are you sure?`)) return;
+  if (sp < effectiveCost && !confirm(`⚠️ Selling at a LOSS of ₹${fmt(Math.round(effectiveCost - sp))} (${actualWt}kg × ₹${fmt(inputRate)}/kg = ₹${fmt(sp)}). Are you sure?`)) return;
 
   setLoading('confirmSaleBtn', true);
   try {
@@ -867,7 +868,32 @@ async function viewGoat(id) {
           <div class="view-item"><span class="view-lbl">Advance Paid</span><span class="view-val">₹${fmt(g.advance_amount)} <span class="pay-badge">${g.advance_mode || ''}</span></span></div>
           ${g.advance_date ? `<div class="view-item"><span class="view-lbl">Advance Date</span><span class="view-val">📅 ${String(g.advance_date).slice(0,10)}</span></div>` : ''}` : ''}
         ${g.final_payment_mode ? `<div class="view-item"><span class="view-lbl">Final Payment Mode</span><span class="view-val"><span class="pay-badge">${g.final_payment_mode}</span></span></div>` : ''}
-        ${g.status === 'booked' ? `<div class="view-item view-full"><span class="view-lbl">Remaining Due</span><span class="view-val" style="color:var(--orange);font-weight:800">₹${fmt(remaining)} to collect</span></div>` : ''}` : ''}
+        ${g.status === 'booked' ? `<div class="view-item view-full"><span class="view-lbl">Remaining Due</span><span class="view-val" style="color:var(--orange);font-weight:800">₹${fmt(remaining)} to collect</span></div>` : ''}
+        ${g.status === 'sold' ? (() => {
+          const isInYard    = g.delivery_status === 'in_yard' || (g.status === 'sold' && !g.delivery_status);
+          const isDelivered = g.delivery_status === 'delivered';
+          const holdStart   = g.holding_start_date || g.sale_date;
+          const holdDays    = isInYard && holdStart
+            ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000))
+            : (isDelivered && holdStart && g.delivery_date)
+            ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
+            : 0;
+          const holdRate    = parseFloat(g.holding_rate || 150);
+          const holdCharges = isDelivered ? parseFloat(g.holding_charges || 0) : holdDays * holdRate;
+          if (isInYard) return `
+            <div class="view-item view-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span class="view-lbl" style="font-weight:700;color:var(--orange)">── Yard Status ──</span><span class="view-val"></span></div>
+            <div class="view-item"><span class="view-lbl">Yard Status</span><span class="view-val" style="color:var(--orange);font-weight:700">🏠 In Yard</span></div>
+            <div class="view-item"><span class="view-lbl">Holding Since</span><span class="view-val">📅 ${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>
+            <div class="view-item"><span class="view-lbl">Days So Far</span><span class="view-val">${holdDays} day${holdDays !== 1 ? 's' : ''}</span></div>
+            <div class="view-item"><span class="view-lbl">Rate</span><span class="view-val">₹${fmt(holdRate)}/day</span></div>
+            <div class="view-item"><span class="view-lbl">Charges Accrued</span><span class="view-val" style="color:var(--orange);font-weight:700">₹${fmt(holdCharges)}</span></div>`;
+          if (isDelivered) return `
+            <div class="view-item view-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span class="view-lbl" style="font-weight:700;color:var(--green)">── Delivery ──</span><span class="view-val"></span></div>
+            <div class="view-item"><span class="view-lbl">Delivered On</span><span class="view-val">📅 ${g.delivery_date ? String(g.delivery_date).slice(0,10) : '—'}</span></div>
+            ${holdCharges > 0 ? `<div class="view-item"><span class="view-lbl">Holding Charges</span><span class="view-val">₹${fmt(holdCharges)} (${holdDays}d × ₹${fmt(holdRate)}/day)</span></div>` : ''}`;
+          return '';
+        })() : ''}`
+      : ''}
       <div class="view-item view-full"><span class="view-lbl">Notes</span><span class="view-val">${esc(g.notes || '—')}</span></div>
     </div>`;
   showModal('viewModal');

@@ -6,7 +6,7 @@
 // ─── Global state ───────────────────────────────────────────
 let allStock = [];
 let allSold  = [];
-let charts   = {};
+let charts   = {}; // kept for backward compat, no longer used
 let _deferredPWAPrompt = null;
 
 // ─── PWA install prompt ─────────────────────────────────────
@@ -39,11 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('goatForm').addEventListener('submit',     saveGoat);
   document.getElementById('sellForm').addEventListener('submit',     confirmSale);
   document.getElementById('finalizeForm').addEventListener('submit', finalizeSale);
+  document.getElementById('deliverForm').addEventListener('submit',  confirmDelivery);
 
   ['fWeight','fCost','fExtra'].forEach(id =>
     document.getElementById(id).addEventListener('input', calcAuto)
   );
-  document.getElementById('sellPrice').addEventListener('input', updateSellPreview);
+  document.getElementById('sellRatePerKg').addEventListener('input', updateSellPreview);
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;

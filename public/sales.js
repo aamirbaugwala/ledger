@@ -33,7 +33,7 @@ function _applyFiltersAndSort() {
       (g.buyer_name  || '').toLowerCase().includes(q) ||
       (g.breed       || '').toLowerCase().includes(q) ||
       (g.buyer_phone || '').toLowerCase().includes(q);
-    const matchStatus  = !status  || g.status === status;
+    const matchStatus  = !status  || g.status === status || (status === 'in_yard' && g.delivery_status === 'in_yard');
     const matchPayment = !payment || g.final_payment_mode === payment || g.advance_mode === payment;
     const matchFrom    = !dateFrom || saleDate >= dateFrom;
     const matchTo      = !dateTo   || saleDate <= dateTo;
@@ -97,6 +97,14 @@ function renderSalesTable(goats) {
                             .reduce((s, g) => s + parseFloat(g.selling_price || 0) - parseFloat(g.advance_amount || 0), 0);
   const avgProfit    = goats.length ? (totalProfit / goats.length) : 0;
   const margin       = totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) : 0;
+  // In-yard (sold but not yet physically delivered)
+  const inYardGoats  = goats.filter(g => g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status));
+  const inYardCount  = inYardGoats.length;
+  const inYardAccruing = inYardGoats.reduce((s, g) => {
+    const start = g.holding_start_date || g.sale_date;
+    const days  = start ? Math.max(0, Math.round((new Date() - new Date(start)) / 86400000)) : 0;
+    return s + days * parseFloat(g.holding_rate || 150);
+  }, 0);
 
   if (!goats.length) {
     container.innerHTML = `
@@ -126,31 +134,53 @@ function renderSalesTable(goats) {
     const isBooked   = g.status === 'booked';
     const profitCls  = profit >= 0 ? 'profit-pos' : 'profit-neg';
 
-    const statusBadge = isBooked
-      ? `<span class="st-badge st-booked">⏳ Booked</span>`
-      : `<span class="st-badge st-sold">✅ Sold</span>`;
+    // Delivery tracking — treat NULL delivery_status on sold goats as in_yard
+    const isInYard   = g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status);
+    const isDelivered = g.delivery_status === 'delivered';
+    const holdStart  = g.holding_start_date || g.sale_date;
+    const holdDays   = (isInYard && holdStart)
+      ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000))
+      : (isDelivered && holdStart && g.delivery_date)
+      ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
+      : 0;
+    const holdRate    = parseFloat(g.holding_rate || 150);
+    const holdCharges = isDelivered
+      ? parseFloat(g.holding_charges || 0)
+      : isInYard ? holdDays * holdRate : 0;
 
-    // Weight cell: show sale weight or purchase weight
+    // Status badge: sold + delivery sub-status
+    let statusBadge;
+    if (isBooked) {
+      statusBadge = `<span class="st-badge st-booked">⏳ Booked</span>`;
+    } else if (isInYard) {
+      statusBadge = `<span class="st-badge st-sold">✅ Sold</span>
+        <span class="st-badge st-inyard">🏠 In Yard</span>
+        <div style="margin-top:3px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} accrued</span></div>`;
+    } else if (isDelivered) {
+      const delDate = g.delivery_date ? String(g.delivery_date).slice(0,10) : '—';
+      statusBadge = `<span class="st-badge st-sold">✅ Sold</span>
+        <span class="st-badge st-delivered">📦 Delivered</span>
+        ${holdCharges > 0 ? `<div style="margin-top:3px"><span class="stc-sub">Held ${holdDays}d · ₹${fmt(holdCharges)}</span></div>` : ''}`;
+    } else {
+      statusBadge = `<span class="st-badge st-sold">✅ Sold</span>`;
+    }
+
     const wtCell = wt > 0
       ? `<span class="stc-main">${wt} kg</span>${pricePerKg ? `<span class="stc-sub">₹${fmt(pricePerKg)}/kg</span>` : ''}`
       : `<span class="stc-muted">—</span>`;
 
-    // Financials cell: sale price + cost breakdown
     const finCell = `
       <span class="stc-main">₹${fmt(sellPrice)}</span>
       <span class="stc-sub">Cost ₹${fmt(cost)}${extra > 0 ? ` + ₹${fmt(extra)}` : ''}</span>`;
 
-    // Profit cell: amount + margin %
     const profitCell = `
       <span class="stc-main ${profitCls}">${profit >= 0 ? '+' : ''}₹${fmt(profit)}</span>
       <span class="stc-sub ${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit >= 0 ? '▲' : '▼'} ${Math.abs(marginPct)}% margin</span>`;
 
-    // Buyer cell: name + phone stacked
     const buyerCell = g.buyer_name
       ? `<span class="stc-main">${esc(g.buyer_name)}</span>${g.buyer_phone ? `<span class="stc-sub">📞 ${esc(g.buyer_phone)}</span>` : ''}`
       : `<span class="stc-muted">—</span>`;
 
-    // Payment cell: mode + advance info
     let payCell;
     if (isBooked) {
       payCell = advance > 0
@@ -163,12 +193,15 @@ function renderSalesTable(goats) {
         : `<span class="stc-muted">—</span>`;
     }
 
-    // Tag + breed stacked
     const tagCell = `
       <span class="goat-tag-sm">🐐 ${esc(g.goat_id)}</span>
       ${g.breed ? `<span class="stc-sub">${esc(g.breed)}</span>` : ''}`;
 
-    return `<tr class="${isBooked ? 'row-booked' : ''}">
+    const deliverBtn = isInYard
+      ? `<button class="btn btn-deliver btn-sm" onclick="openDeliverModal(${g.id})" title="Mark Delivered">📦 Out</button>`
+      : '';
+
+    return `<tr class="${isBooked ? 'row-booked' : ''}${isInYard ? ' row-inyard' : ''}">
       <td>${tagCell}</td>
       <td>${statusBadge}</td>
       <td>${wtCell}</td>
@@ -179,6 +212,7 @@ function renderSalesTable(goats) {
       <td><span class="stc-main">${saleDate}</span></td>
       <td>
         <div class="tbl-actions">
+          ${deliverBtn}
           <button class="btn btn-wa btn-sm" onclick="sendWhatsApp(${g.id})" title="WhatsApp Receipt">📱</button>
           <button class="btn btn-gray btn-sm" onclick="viewGoat(${g.id})" title="View Details">👁</button>
           ${isBooked
@@ -199,6 +233,7 @@ function renderSalesTable(goats) {
       <div class="ssb-item"><span class="ssb-label">Avg Profit</span><span class="ssb-val ${avgProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${avgProfit >= 0 ? '+' : ''}₹${fmt(avgProfit)}</span></div>
       <div class="ssb-item"><span class="ssb-label">Paid</span><span class="ssb-val">${fullyPaid}</span></div>
       <div class="ssb-item ssb-warn"><span class="ssb-label">⏳ Pending</span><span class="ssb-val">${pending} · ₹${fmt(totalPending)}</span></div>
+      ${inYardCount > 0 ? `<div class="ssb-item ssb-inyard"><span class="ssb-label">🏠 In Yard</span><span class="ssb-val">${inYardCount} · ₹${fmt(inYardAccruing)} due</span></div>` : ''}
       <button class="btn btn-gray btn-sm ssb-export" onclick="exportSalesCSV()">⬇ CSV</button>
     </div>
     <div class="sales-table-wrap">
@@ -221,30 +256,119 @@ function renderSalesTable(goats) {
     </div>`;
 }
 
+// ── Deliver modal ────────────────────────────────────────────
+async function openDeliverModal(id) {
+  const g = await api(`/api/goats/${id}`);
+  if (!g) { showToast('Could not load goat details', 'error'); return; }
+
+  const holdStart = g.holding_start_date || g.sale_date;
+  const holdRate  = parseFloat(g.holding_rate || 150);
+
+  document.getElementById('deliverId').value    = id;
+  document.getElementById('deliverDate').value  = today();
+  document.getElementById('deliverRate').value  = holdRate;
+  document.getElementById('deliverFormErr').classList.add('hidden');
+  document.getElementById('deliverPreview').classList.add('hidden');
+  setLoading('deliverBtn', false);
+
+  document.getElementById('deliverInfoBox').innerHTML = `
+    <div class="d-item"><span class="d-lbl">Goat</span><span class="d-val">🐐 ${esc(g.goat_id)}</span></div>
+    <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
+    <div class="d-item"><span class="d-lbl">Sale Price</span><span class="d-val">₹${fmt(g.selling_price)}</span></div>
+    <div class="d-item"><span class="d-lbl">Holding Since</span><span class="d-val">📅 ${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>`;
+
+  // Store holding start for preview calc
+  document.getElementById('deliverDate').dataset.holdStart = holdStart || '';
+  showModal('deliverModal');
+  updateDeliverPreview();
+}
+
+function updateDeliverPreview() {
+  const deliverDate = document.getElementById('deliverDate').value;
+  const rate        = parseFloat(document.getElementById('deliverRate').value) || 0;
+  const holdStart   = document.getElementById('deliverDate').dataset.holdStart;
+  const el          = document.getElementById('deliverPreview');
+
+  if (deliverDate && holdStart) {
+    const days    = Math.max(0, Math.round((new Date(deliverDate) - new Date(holdStart)) / 86400000));
+    const charges = days * rate;
+    el.textContent = days === 0
+      ? `✅ Delivered same day — no holding charges`
+      : `🏠 Held ${days} day${days > 1 ? 's' : ''} × ₹${fmt(rate)}/day = ₹${fmt(charges)} holding charges`;
+    el.className = `profit-preview ${charges > 0 ? 'neg' : 'pos'}`;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+async function confirmDelivery(e) {
+  e.preventDefault();
+  const id        = document.getElementById('deliverId').value;
+  const errEl     = document.getElementById('deliverFormErr');
+  const delDate   = document.getElementById('deliverDate').value;
+  const rate      = parseFloat(document.getElementById('deliverRate').value);
+  const holdStart = document.getElementById('deliverDate').dataset.holdStart;
+  errEl.classList.add('hidden');
+
+  if (!delDate)   { errEl.textContent = '⚠️ Delivery date is required.'; errEl.classList.remove('hidden'); return; }
+  if (delDate > today()) { errEl.textContent = '⚠️ Delivery date cannot be in the future.'; errEl.classList.remove('hidden'); return; }
+  if (holdStart && delDate < holdStart) { errEl.textContent = '⚠️ Delivery date cannot be before the holding start date.'; errEl.classList.remove('hidden'); return; }
+
+  setLoading('deliverBtn', true);
+  try {
+    const res  = await fetch(`/api/goats/${id}/deliver`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delivery_date: delDate, holding_rate: rate })
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('hidden'); setLoading('deliverBtn', false); return; }
+    closeModal('deliverModal');
+    const msg = data.holding_charges > 0
+      ? `📦 Goat delivered · Holding charges: ₹${fmt(data.holding_charges)} for ${data.holding_days} day${data.holding_days > 1 ? 's' : ''}`
+      : `📦 Goat delivered — no holding charges`;
+    showToast(msg, data.holding_charges > 0 ? 'warning' : 'success', 5000);
+    await loadSold();
+    loadDashboard();
+  } catch (err) {
+    errEl.textContent = 'Network error: ' + err.message;
+    errEl.classList.remove('hidden'); setLoading('deliverBtn', false);
+  }
+}
+
 // ── CSV Export ───────────────────────────────────────────────
 function exportSalesCSV() {
   if (!_salesFiltered.length) { showToast('No data to export', 'warning'); return; }
-  const headers = ['Goat ID','Breed','Status','Purchase Date','Buy Weight (kg)','Sale Weight (kg)',
+  const headers = ['Goat ID','Breed','Status','Delivery Status','Purchase Date','Buy Weight (kg)','Sale Weight (kg)',
     'Cost Price (₹)','Extra Costs (₹)','Total Cost (₹)','Sale Price (₹)','Profit (₹)','Margin %',
-    'Buyer Name','Buyer Phone','Advance Amount (₹)','Advance Mode','Final Payment Mode','Sale Date','Added By','Notes'];
+    'Buyer Name','Buyer Phone','Advance Amount (₹)','Advance Mode','Final Payment Mode','Sale Date',
+    'Delivery Date','Holding Days','Holding Rate (₹/day)','Holding Charges (₹)','Added By','Notes'];
   const rows = _salesFiltered.map(g => {
-    const cost      = parseFloat(g.cost_price || 0);
-    const extra     = parseFloat(g.extra_costs || 0);
-    const totalCost = cost + extra;
-    const sellPrice = parseFloat(g.selling_price || 0);
-    const profit    = sellPrice - totalCost;
-    const marginPct = totalCost > 0 ? ((profit / totalCost) * 100).toFixed(1) : '0';
-    const saleDate  = g.sale_date ? String(g.sale_date).slice(0,10) : '';
-    const purchDate = g.purchase_date ? String(g.purchase_date).slice(0,10) : '';
+    const cost        = parseFloat(g.cost_price || 0);
+    const extra       = parseFloat(g.extra_costs || 0);
+    const totalCost   = cost + extra;
+    const sellPrice   = parseFloat(g.selling_price || 0);
+    const profit      = sellPrice - totalCost;
+    const marginPct   = totalCost > 0 ? ((profit / totalCost) * 100).toFixed(1) : '0';
+    const saleDate    = g.sale_date ? String(g.sale_date).slice(0,10) : '';
+    const purchDate   = g.purchase_date ? String(g.purchase_date).slice(0,10) : '';
+    const delivDate   = g.delivery_date ? String(g.delivery_date).slice(0,10) : '';
+    const holdStart   = g.holding_start_date || g.sale_date;
+    const holdDays    = (holdStart && g.delivery_date)
+      ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
+      : '';
     return [
-      g.goat_id, g.breed || '', g.status,
+      g.goat_id, g.breed || '', g.status, g.delivery_status || '',
       purchDate, g.weight_kg || '', g.sale_weight_kg || '',
       cost.toFixed(0), extra.toFixed(0), totalCost.toFixed(0),
       sellPrice.toFixed(0), profit.toFixed(0), marginPct,
       g.buyer_name || '', g.buyer_phone || '',
       parseFloat(g.advance_amount || 0).toFixed(0),
       g.advance_mode || '', g.final_payment_mode || '',
-      saleDate, g.added_by || '', g.notes || ''
+      saleDate, delivDate, holdDays,
+      parseFloat(g.holding_rate || 150).toFixed(0),
+      parseFloat(g.holding_charges || 0).toFixed(0),
+      g.added_by || '', g.notes || ''
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
   });
   const csv  = [headers.join(','), ...rows].join('\n');

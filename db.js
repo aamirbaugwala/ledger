@@ -34,11 +34,17 @@ async function initDB() {
 
   // Add new columns if they don't exist (safe for existing deployments)
   const newCols = [
-    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS sale_weight_kg  NUMERIC`,
-    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_amount  NUMERIC  DEFAULT 0`,
-    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_mode    TEXT     DEFAULT ''`,
-    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_date    DATE`,
-    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS final_payment_mode TEXT  DEFAULT ''`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS sale_weight_kg     NUMERIC`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_amount     NUMERIC  DEFAULT 0`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_mode       TEXT     DEFAULT ''`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_date       DATE`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS final_payment_mode TEXT     DEFAULT ''`,
+    // Delivery / holding tracking
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS delivery_status    TEXT`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS holding_start_date DATE`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS holding_rate       NUMERIC  DEFAULT 150`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS holding_charges    NUMERIC  DEFAULT 0`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS delivery_date      DATE`,
   ];
   for (const sql of newCols) await pool.query(sql);
 

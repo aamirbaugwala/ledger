@@ -199,12 +199,18 @@ app.post('/api/goats/:id/sell', async (req, res) => {
          status=$1, selling_price=$2, buyer_name=$3, buyer_phone=$4,
          sale_date=$5, sale_weight_kg=$6,
          advance_amount=$7, advance_mode=$8, advance_date=$9,
-         final_payment_mode=$10, updated_at=NOW()
-       WHERE id=$11`,
+         final_payment_mode=$10,
+         delivery_status=$11, holding_start_date=$12, holding_rate=$13,
+         updated_at=NOW()
+       WHERE id=$14`,
       [newStatus, sp, buyer_name||'', buyer_phone||'', sale_date,
        parseFloat(sale_weight_kg)||null,
        advance, advance_mode||'', advance > 0 ? sale_date : null,
-       final_payment_mode||'', req.params.id]
+       final_payment_mode||'',
+       newStatus === 'sold' ? 'in_yard' : null,   // booked → no delivery yet
+       newStatus === 'sold' ? sale_date : null,    // holding starts from sale date
+       150,
+       req.params.id]
     );
     res.json({ success: true, status: newStatus });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -217,9 +223,12 @@ app.post('/api/goats/:id/finalize', async (req, res) => {
     const { rows } = await pool.query('SELECT status FROM goats WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
     if (rows[0].status !== 'booked') return res.status(400).json({ error: 'Goat is not in booked state' });
+    const today = new Date().toISOString().split('T')[0];
     await pool.query(
-      `UPDATE goats SET status='sold', final_payment_mode=$1, updated_at=NOW() WHERE id=$2`,
-      [final_payment_mode||'', req.params.id]
+      `UPDATE goats SET status='sold', final_payment_mode=$1,
+         delivery_status='in_yard', holding_start_date=$2, holding_rate=150,
+         updated_at=NOW() WHERE id=$3`,
+      [final_payment_mode||'', today, req.params.id]
     );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -232,10 +241,40 @@ app.post('/api/goats/:id/unsell', async (req, res) => {
       `UPDATE goats SET status='available', selling_price=NULL, buyer_name=NULL,
          buyer_phone=NULL, sale_date=NULL, sale_weight_kg=NULL,
          advance_amount=0, advance_mode='', advance_date=NULL,
-         final_payment_mode='', updated_at=NOW() WHERE id=$1`,
+         final_payment_mode='',
+         delivery_status=NULL, holding_start_date=NULL, holding_rate=150,
+         holding_charges=0, delivery_date=NULL,
+         updated_at=NOW() WHERE id=$1`,
       [req.params.id]
     );
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Mark as delivered — goat physically leaves the yard
+app.post('/api/goats/:id/deliver', async (req, res) => {
+  const { delivery_date, holding_rate } = req.body;
+  if (!delivery_date) return res.status(400).json({ error: 'Delivery date is required' });
+  try {
+    const { rows } = await pool.query('SELECT * FROM goats WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
+    if (rows[0].status !== 'sold') return res.status(400).json({ error: 'Goat must be fully sold before delivery' });
+    if (rows[0].delivery_status === 'delivered') return res.status(400).json({ error: 'Already marked as delivered' });
+
+    const g      = rows[0];
+    const rate   = parseFloat(holding_rate) || parseFloat(g.holding_rate) || 150;
+    const start  = g.holding_start_date || g.sale_date;
+    const days   = start
+      ? Math.max(0, Math.round((new Date(delivery_date) - new Date(start)) / 86400000))
+      : 0;
+    const charges = days * rate;
+
+    await pool.query(
+      `UPDATE goats SET delivery_status='delivered', delivery_date=$1,
+         holding_rate=$2, holding_charges=$3, updated_at=NOW() WHERE id=$4`,
+      [delivery_date, rate, charges, req.params.id]
+    );
+    res.json({ success: true, holding_days: days, holding_charges: charges });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

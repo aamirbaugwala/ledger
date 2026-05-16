@@ -18,6 +18,23 @@ async function sendWhatsApp(id) {
   const dateStr   = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   const timeStr   = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
+  // Holding / delivery info
+  const isInYard    = g.delivery_status === 'in_yard';
+  const isDelivered = g.delivery_status === 'delivered';
+  const holdRate    = parseFloat(g.holding_rate || 150);
+  let holdDays = 0, holdCharges = 0, holdStart = '';
+  if (isInYard || isDelivered) {
+    const startDate = g.holding_start_date || g.sale_date;
+    if (startDate) {
+      holdStart = String(startDate).slice(0, 10);
+      const endDate = isDelivered && g.delivery_date ? new Date(g.delivery_date) : now;
+      const ms = endDate - new Date(startDate);
+      holdDays = Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+      holdCharges = isDelivered ? parseFloat(g.holding_charges || holdDays * holdRate)
+                                : holdDays * holdRate;
+    }
+  }
+
   const lines = [
     `🐐 *CLASSIC GOAT FARM*`,
     `📋 *Sale Receipt*`,
@@ -40,6 +57,15 @@ async function sendWhatsApp(id) {
       ? `• Balance Due  : *₹${fmt(remaining)}*`
       : `• Final Payment: ₹${fmt(sp - advance)} (${g.final_payment_mode || 'cash'})`,
     `• Total Paid   : ₹${fmt(isBooked ? advance : sp)}`,
+    ``,
+    (isInYard || isDelivered) ? `*Yard / Delivery*` : null,
+    isInYard    ? `• Status       : 🏠 In Yard` : null,
+    isDelivered ? `• Status       : 📦 Delivered (${g.delivery_date ? String(g.delivery_date).slice(0,10) : ''})` : null,
+    holdStart   ? `• In Yard Since: ${holdStart}` : null,
+    (isInYard || isDelivered) ? `• Days in Yard : ${holdDays} day${holdDays !== 1 ? 's' : ''}` : null,
+    (isInYard || isDelivered) ? `• Holding Rate : ₹${fmt(holdRate)}/day` : null,
+    holdCharges > 0 ? `• Holding Chgs : *₹${fmt(Math.round(holdCharges))}*` : null,
+    isInYard    ? `⏳ *Accruing ₹${fmt(holdRate)}/day until delivery.*` : null,
     ``,
     isBooked
       ? `⚠️ *Remaining balance of ₹${fmt(remaining)} to be paid on delivery.*`
