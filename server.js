@@ -82,7 +82,12 @@ app.get('/api/goats', async (req, res) => {
   const { status, search } = req.query;
   const conds = [], params = [];
   let p = 1;
-  if (status) { conds.push(`status = $${p++}`); params.push(status); }
+  if (status === 'available') {
+    // 'available' query returns both available AND booked goats for the stock page
+    conds.push(`status IN ('available','booked')`);
+  } else if (status) {
+    conds.push(`status = $${p++}`); params.push(status);
+  }
   if (search) {
     conds.push(`(goat_id ILIKE $${p} OR breed ILIKE $${p} OR notes ILIKE $${p} OR buyer_name ILIKE $${p})`);
     params.push(`%${search}%`);
@@ -170,9 +175,10 @@ app.put('/api/goats/:id', (req, res, next) => {
   }
 });
 
-// Mark as sold
+// Mark as sold / booked (if advance < full price → booked)
 app.post('/api/goats/:id/sell', async (req, res) => {
-  const { selling_price, buyer_name, buyer_phone, sale_date } = req.body;
+  const { selling_price, buyer_name, buyer_phone, sale_date,
+          sale_weight_kg, advance_amount, advance_mode, final_payment_mode } = req.body;
   if (!selling_price || !sale_date)
     return res.status(400).json({ error: 'Selling price and sale date are required' });
   try {
@@ -180,10 +186,37 @@ app.post('/api/goats/:id/sell', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
     if (rows[0].status === 'sold') return res.status(400).json({ error: 'Already sold' });
 
+    const sp      = parseFloat(selling_price);
+    const advance = parseFloat(advance_amount) || 0;
+    // If advance paid but less than full price → 'booked', otherwise 'sold'
+    const newStatus = (advance > 0 && advance < sp) ? 'booked' : 'sold';
+
     await pool.query(
-      `UPDATE goats SET status='sold', selling_price=$1, buyer_name=$2,
-         buyer_phone=$3, sale_date=$4, updated_at=NOW() WHERE id=$5`,
-      [parseFloat(selling_price), buyer_name||'', buyer_phone||'', sale_date, req.params.id]
+      `UPDATE goats SET
+         status=$1, selling_price=$2, buyer_name=$3, buyer_phone=$4,
+         sale_date=$5, sale_weight_kg=$6,
+         advance_amount=$7, advance_mode=$8, advance_date=$9,
+         final_payment_mode=$10, updated_at=NOW()
+       WHERE id=$11`,
+      [newStatus, sp, buyer_name||'', buyer_phone||'', sale_date,
+       parseFloat(sale_weight_kg)||null,
+       advance, advance_mode||'', advance > 0 ? sale_date : null,
+       final_payment_mode||'', req.params.id]
+    );
+    res.json({ success: true, status: newStatus });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Finalize a booked goat (collect remaining payment)
+app.post('/api/goats/:id/finalize', async (req, res) => {
+  const { final_payment_mode } = req.body;
+  try {
+    const { rows } = await pool.query('SELECT status FROM goats WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
+    if (rows[0].status !== 'booked') return res.status(400).json({ error: 'Goat is not in booked state' });
+    await pool.query(
+      `UPDATE goats SET status='sold', final_payment_mode=$1, updated_at=NOW() WHERE id=$2`,
+      [final_payment_mode||'', req.params.id]
     );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -194,7 +227,9 @@ app.post('/api/goats/:id/unsell', async (req, res) => {
   try {
     await pool.query(
       `UPDATE goats SET status='available', selling_price=NULL, buyer_name=NULL,
-         buyer_phone=NULL, sale_date=NULL, updated_at=NOW() WHERE id=$1`,
+         buyer_phone=NULL, sale_date=NULL, sale_weight_kg=NULL,
+         advance_amount=0, advance_mode='', advance_date=NULL,
+         final_payment_mode='', updated_at=NOW() WHERE id=$1`,
       [req.params.id]
     );
     res.json({ success: true });
@@ -236,19 +271,29 @@ app.get('/api/next-id', async (req, res) => {
 // ══════════════════════════════════════════════════════════
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const [avail, sold, totals, monthly, byBreed, recentSales, weightDist] = await Promise.all([
+    const [avail, booked, sold, totals, pendingQ, monthly, byBreed, recentActivity, weightDist, payModes, payBreakdown] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int cnt, COALESCE(SUM(cost_price+extra_costs),0) inv FROM goats WHERE status='available'`),
       pool.query(`
-        SELECT COUNT(*)::int cnt, COALESCE(SUM(cost_price+extra_costs),0) inv
-        FROM goats WHERE status='available'`),
+        SELECT COUNT(*)::int cnt,
+               COALESCE(SUM(advance_amount),0)                              advance_collected,
+               COALESCE(SUM(selling_price - advance_amount),0)             pending_amount
+        FROM goats WHERE status='booked'`),
       pool.query(`SELECT COUNT(*)::int cnt FROM goats WHERE status='sold'`),
       pool.query(`
-        SELECT COALESCE(SUM(selling_price),0)                           revenue,
-               COALESCE(SUM(cost_price+extra_costs),0)                  cost,
-               COALESCE(SUM(selling_price-(cost_price+extra_costs)),0)  profit
+        SELECT COALESCE(SUM(selling_price),0)                          revenue,
+               COALESCE(SUM(cost_price+extra_costs),0)                 cost,
+               COALESCE(SUM(selling_price-(cost_price+extra_costs)),0) profit
         FROM goats WHERE status='sold'`),
       pool.query(`
+        SELECT goat_id, buyer_name, buyer_phone,
+               selling_price::float, advance_amount::float,
+               (selling_price - advance_amount)::float remaining,
+               sale_date
+        FROM goats WHERE status='booked'
+        ORDER BY sale_date DESC`),
+      pool.query(`
         SELECT TO_CHAR(sale_date,'YYYY-MM') mon,
-               COUNT(*)::int                cnt,
+               COUNT(*)::int cnt,
                SUM(selling_price)           revenue,
                SUM(cost_price+extra_costs)  cost,
                SUM(selling_price-(cost_price+extra_costs)) profit
@@ -257,17 +302,19 @@ app.get('/api/dashboard', async (req, res) => {
       pool.query(`
         SELECT breed,
                COUNT(*)::int total,
-               SUM(CASE WHEN status='sold' THEN 1 ELSE 0 END)::int sold_count,
+               SUM(CASE WHEN status='sold'   THEN 1 ELSE 0 END)::int sold_count,
+               SUM(CASE WHEN status='booked' THEN 1 ELSE 0 END)::int booked_count,
                COALESCE(SUM(CASE WHEN status='sold'
                  THEN selling_price-(cost_price+extra_costs) ELSE 0 END),0) profit
         FROM goats WHERE breed IS NOT NULL AND breed != ''
         GROUP BY breed ORDER BY total DESC`),
       pool.query(`
         SELECT goat_id, breed, weight_kg::float, cost_price::float, extra_costs::float,
-               selling_price::float, buyer_name, sale_date, added_by,
+               selling_price::float, buyer_name, sale_date, added_by, status,
+               advance_amount::float, final_payment_mode,
                (selling_price-(cost_price+extra_costs))::float profit
-        FROM goats WHERE status='sold'
-        ORDER BY sale_date DESC NULLS LAST LIMIT 15`),
+        FROM goats WHERE status IN ('sold','booked')
+        ORDER BY updated_at DESC NULLS LAST LIMIT 20`),
       pool.query(`
         SELECT CASE
           WHEN weight_kg < 10 THEN '< 10 kg'
@@ -277,19 +324,41 @@ app.get('/api/dashboard', async (req, res) => {
           ELSE '40+ kg' END AS range,
           COUNT(*)::int cnt
         FROM goats GROUP BY range ORDER BY range`),
+      pool.query(`
+        SELECT final_payment_mode mode, COUNT(*)::int cnt
+        FROM goats WHERE status='sold' AND final_payment_mode IS NOT NULL AND final_payment_mode != ''
+        GROUP BY final_payment_mode`),
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN advance_mode='cash'   AND advance_amount > 0 THEN advance_amount ELSE 0 END),0)::float  adv_cash,
+          COALESCE(SUM(CASE WHEN advance_mode='online' AND advance_amount > 0 THEN advance_amount ELSE 0 END),0)::float  adv_online,
+          COALESCE(SUM(CASE WHEN status='sold' AND final_payment_mode='cash'
+                            THEN selling_price - COALESCE(advance_amount,0) ELSE 0 END),0)::float                        fin_cash,
+          COALESCE(SUM(CASE WHEN status='sold' AND final_payment_mode='online'
+                            THEN selling_price - COALESCE(advance_amount,0) ELSE 0 END),0)::float                        fin_online,
+          COALESCE(SUM(CASE WHEN status='sold' AND final_payment_mode='cash+online'
+                            THEN selling_price - COALESCE(advance_amount,0) ELSE 0 END),0)::float                        fin_split,
+          COALESCE(SUM(CASE WHEN status='booked' THEN selling_price - COALESCE(advance_amount,0) ELSE 0 END),0)::float   uncollected
+        FROM goats`),
     ]);
 
     res.json({
-      availableCount: avail.rows[0].cnt,
-      stockValue:     parseFloat(avail.rows[0].inv),
-      soldCount:      sold.rows[0].cnt,
-      totalRevenue:   parseFloat(totals.rows[0].revenue),
-      totalCost:      parseFloat(totals.rows[0].cost),
-      totalProfit:    parseFloat(totals.rows[0].profit),
-      monthly:        monthly.rows,
-      byBreed:        byBreed.rows,
-      recentSales:    recentSales.rows,
-      weightDist:     weightDist.rows,
+      availableCount:    avail.rows[0].cnt,
+      stockValue:        parseFloat(avail.rows[0].inv),
+      bookedCount:       booked.rows[0].cnt,
+      advanceCollected:  parseFloat(booked.rows[0].advance_collected),
+      pendingAmount:     parseFloat(booked.rows[0].pending_amount),
+      pendingGoats:      pendingQ.rows,
+      soldCount:         sold.rows[0].cnt,
+      totalRevenue:      parseFloat(totals.rows[0].revenue),
+      totalCost:         parseFloat(totals.rows[0].cost),
+      totalProfit:       parseFloat(totals.rows[0].profit),
+      monthly:           monthly.rows,
+      byBreed:           byBreed.rows,
+      recentActivity:    recentActivity.rows,
+      weightDist:        weightDist.rows,
+      payModes:          payModes.rows,
+      payBreakdown:      payBreakdown.rows[0],
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

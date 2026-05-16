@@ -1,4 +1,4 @@
-# 🐐 Goat Ledger
+# Ledger
 
 Mobile-first livestock management app. Track stock, record sales, visualise profit/loss.
 
@@ -20,7 +20,7 @@ This means it persists across deployments, restarts, and multiple users.
 
 ### 1. Create a free Neon database
 1. Go to **https://neon.tech** → Sign up free
-2. Create a new project (e.g. "goat-ledger")
+2. Create a new project (e.g. "-ledger")
 3. Copy the **connection string** — looks like:
    `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`
 
@@ -53,7 +53,7 @@ npm start
 git init
 git add .
 git commit -m "initial"
-git remote add origin https://github.com/YOUR_USERNAME/goat-ledger.git
+git remote add origin https://github.com/YOUR_USERNAMEledger.git
 git push -u origin main
 ```
 
@@ -72,10 +72,10 @@ git push -u origin main
 
 ---
 
-## Add Goat Form Fields
+## Add  Form Fields
 
-When adding a goat to stock:
-- **Goat ID** — auto-suggested (G-001, G-002…)
+When adding a  to stock:
+- ** ID** — auto-suggested (G-001, G-002…)
 - **Photo** — from camera or gallery
 - **Breed** — Boer, Jamunapari, etc.
 - **Weight (kg)**

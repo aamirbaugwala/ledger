@@ -8,6 +8,7 @@ const pool = new Pool({
 });
 
 async function initDB() {
+  // Create base table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS goats (
       id            SERIAL PRIMARY KEY,
@@ -30,6 +31,17 @@ async function initDB() {
       updated_at    TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+
+  // Add new columns if they don't exist (safe for existing deployments)
+  const newCols = [
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS sale_weight_kg  NUMERIC`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_amount  NUMERIC  DEFAULT 0`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_mode    TEXT     DEFAULT ''`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS advance_date    DATE`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS final_payment_mode TEXT  DEFAULT ''`,
+  ];
+  for (const sql of newCols) await pool.query(sql);
+
   console.log('✅ Database schema ready');
 }
 

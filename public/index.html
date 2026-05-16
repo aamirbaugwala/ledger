@@ -3,92 +3,92 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>🐐 Goat Ledger</title>
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#166534" />
+  <meta name="apple-mobile-web-app-title" content="Goat Ledger" />
+  <title>🐐 Classic Goat Farm</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.svg" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
-
-<!-- ─── TOAST CONTAINER ──────────────────────────────────── -->
 <div id="toastContainer" class="toast-container"></div>
-
-<!-- ─── TOP BAR ─────────────────────────────────────────── -->
 <header class="topbar">
   <div class="topbar-left">
     <button class="menu-btn" onclick="toggleSidebar()">☰</button>
     <span class="topbar-title" id="pageTitle">📊 Dashboard</span>
   </div>
   <div class="topbar-right">
+    <span class="topbar-farm">Classic Goat Farm</span>
     <span class="app-logo">🐐</span>
   </div>
 </header>
-
-<!-- ─── SIDEBAR ─────────────────────────────────────────── -->
 <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
 <nav id="sidebar" class="sidebar">
-  <div class="sidebar-header"><span>🐐 Goat Ledger</span></div>
+  <div class="sidebar-header">
+    <div class="sidebar-brand">
+      <span class="sidebar-brand-icon">🐐</span>
+      <div>
+        <div class="sidebar-brand-name">Classic Goat Farm</div>
+        <div class="sidebar-brand-sub">Ledger & Stock Manager</div>
+      </div>
+    </div>
+  </div>
   <ul class="sidebar-nav">
-    <li><a href="#" data-sec="dashboard"  onclick="showSection('dashboard')">📊 Dashboard</a></li>
-    <li><a href="#" data-sec="stock"      onclick="showSection('stock')">🐐 Stock</a></li>
-    <li><a href="#" data-sec="sold"       onclick="showSection('sold')">� Sales</a></li>
+    <li><a href="#" data-sec="dashboard" onclick="showSection('dashboard')">📊 Dashboard</a></li>
+    <li><a href="#" data-sec="stock"     onclick="showSection('stock')">🐐 Stock</a></li>
+    <li><a href="#" data-sec="sold"      onclick="showSection('sold')">💰 Sales</a></li>
   </ul>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-tools">
+    <div class="sidebar-tools-label">Quick Tools</div>
+    <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openBulkModal,80)">📦 Bulk Add (Mandi)</button>
+    <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openMarketCalc,80)">🏷️ Market Rate Calc</button>
+    <button class="sidebar-tool-btn" id="pwaInstallBtn" style="display:none" onclick="installPWA()">📲 Install App</button>
+  </div>
 </nav>
-
-<!-- ─── MAIN ─────────────────────────────────────────────── -->
 <main class="main-content">
-
-  <!-- DASHBOARD -->
   <section id="sec-dashboard" class="section active">
     <div class="quick-actions">
-      <button class="qa-btn" onclick="showSection('stock'); setTimeout(openAddModal, 80)">
-        <span class="qa-icon">➕</span><span>Add Goat</span>
-      </button>
-      <button class="qa-btn" onclick="showSection('stock')">
-        <span class="qa-icon">🐐</span><span>View Stock</span>
-      </button>
-      <button class="qa-btn" onclick="showSection('sold')">
-        <span class="qa-icon">💰</span><span>Sales History</span>
-      </button>
+      <button class="qa-btn" onclick="showSection('stock');setTimeout(openAddModal,80)"><span class="qa-icon">➕</span><span>Add Goat</span></button>
+      <button class="qa-btn" onclick="openBulkModal()"><span class="qa-icon">📦</span><span>Bulk Add</span></button>
+      <button class="qa-btn" onclick="showSection('stock')"><span class="qa-icon">🐐</span><span>View Stock</span></button>
+      <button class="qa-btn" onclick="showSection('sold')"><span class="qa-icon">💰</span><span>Sales History</span></button>
+      <button class="qa-btn" onclick="openMarketCalc()"><span class="qa-icon">🏷️</span><span>Market Calc</span></button>
     </div>
     <div class="stats-grid" id="statsGrid"></div>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h3>📅 Monthly Revenue vs Cost vs Profit</h3>
-        <canvas id="monthlyChart"></canvas>
-      </div>
-      <div class="chart-card">
-        <h3>🐄 Stock by Breed</h3>
-        <canvas id="breedChart"></canvas>
+    <div class="card">
+      <h3>🔖 Pending Bookings — Awaiting Full Payment</h3>
+      <div class="table-wrap">
+        <table><thead><tr><th>Goat ID</th><th>Buyer</th><th>Phone</th><th>Advance Paid</th><th>Remaining</th></tr></thead>
+        <tbody id="pendingBookingsBody"></tbody></table>
       </div>
     </div>
     <div class="chart-row">
-      <div class="chart-card">
-        <h3>⚖️ Weight Distribution</h3>
-        <canvas id="weightChart"></canvas>
-      </div>
-      <div class="chart-card">
-        <h3>📈 Profit per Breed</h3>
-        <canvas id="breedProfitChart"></canvas>
-      </div>
+      <div class="chart-card"><h3>📅 Monthly Revenue vs Cost vs Profit</h3><canvas id="monthlyChart"></canvas><div id="monthlyChartMsg"></div></div>
+      <div class="chart-card"><h3>📊 Stock Status Breakdown</h3><canvas id="breedChart"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card"><h3>💳 Payment Mode Breakdown</h3><canvas id="weightChart"></canvas><div id="weightChartMsg"></div></div>
+      <div class="chart-card"><h3>🐐 Goat Status by Breed</h3><canvas id="breedProfitChart"></canvas></div>
     </div>
     <div class="card">
-      <h3>🕒 Recent Sales</h3>
+      <h3>💰 Cash vs Online Analysis</h3>
+      <div id="payBreakdownGrid" class="pay-breakdown-grid"></div>
+    </div>
+    <div class="card">
+      <h3>🕒 Recent Activity</h3>
       <div class="table-wrap">
         <table id="recentSalesTable">
-          <thead>
-            <tr>
-              <th>Goat ID</th><th>Breed</th><th>Weight</th>
-              <th>Total Cost</th><th>Sold For</th><th>Profit</th>
-              <th>Buyer</th><th>Added By</th><th>Date</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Goat ID</th><th>Status</th><th>Sold For</th><th>Profit</th><th>Buyer</th><th>Payment</th><th>Date</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
   </section>
-
-  <!-- STOCK -->
   <section id="sec-stock" class="section">
     <div class="section-toolbar">
       <input type="text" id="stockSearch" placeholder="🔍 Search by ID, breed, notes…" oninput="filterStock()" onkeydown="searchEnterSell(event)" class="search-input" />
@@ -97,49 +97,29 @@
     <div id="stockList" class="goat-grid"></div>
     <button class="fab" onclick="openAddModal()" title="Add Goat">＋</button>
   </section>
-
-  <!-- SALES -->
   <section id="sec-sold" class="section">
     <div class="section-toolbar">
       <input type="text" id="soldSearch" placeholder="🔍 Search by ID, buyer, breed…" oninput="filterSold()" class="search-input" />
     </div>
     <div id="soldList" class="goat-grid"></div>
   </section>
-
 </main>
 
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- MODAL: Add / Edit Goat                                  -->
-<!-- ═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Add / Edit Goat -->
 <div id="goatModal" class="modal hidden">
-  <div class="modal-box">
-    <div class="modal-inner">
-    <div class="modal-header">
-      <h2 id="goatModalTitle">Add Goat</h2>
-      <button class="modal-close" onclick="closeModal('goatModal')">✕</button>
-    </div>
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header"><h2 id="goatModalTitle">Add Goat</h2><button class="modal-close" onclick="closeModal('goatModal')">✕</button></div>
     <form id="goatForm" enctype="multipart/form-data">
       <input type="hidden" id="editId" />
-
-      <!-- Photo -->
       <div class="photo-upload-area" onclick="document.getElementById('photoInput').click()">
         <img id="photoPreview" class="hidden" alt="goat photo" />
-        <div id="photoPlaceholder">
-          <span style="font-size:2rem">📷</span>
-          <span>Tap to add photo</span>
-        </div>
+        <div id="photoPlaceholder"><span style="font-size:2rem">📷</span><span>Tap to add photo</span></div>
       </div>
       <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" onchange="previewPhoto(this)" />
-
       <div class="form-section">Identity</div>
-      <!-- Row 1 -->
       <div class="form-row">
-        <div class="form-group">
-          <label>Goat ID / Tag *</label>
-          <input type="text" id="fGoatId" placeholder="e.g. G-001" required />
-        </div>
-        <div class="form-group">
-          <label>Breed</label>
+        <div class="form-group"><label>Goat ID / Tag *</label><input type="text" id="fGoatId" placeholder="e.g. G-001" required /></div>
+        <div class="form-group"><label>Breed</label>
           <input type="text" id="fBreed" placeholder="e.g. Boer" list="breedList" />
           <datalist id="breedList">
             <option value="Boer"><option value="Jamunapari"><option value="Beetal">
@@ -148,42 +128,21 @@
           </datalist>
         </div>
       </div>
-
-      <div class="form-section">Weight & Cost</div>
+      <div class="form-section">Weight &amp; Cost</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Weight (kg) *</label>
-          <input type="number" id="fWeight" placeholder="e.g. 28" step="0.1" min="0.1" required oninput="calcAuto()" />
-        </div>
-        <div class="form-group">
-          <label>Cost per kg (₹) *</label>
-          <input type="number" id="fCost" placeholder="e.g. 350" min="1" required oninput="calcAuto()" />
-        </div>
+        <div class="form-group"><label>Weight (kg) *</label><input type="number" id="fWeight" placeholder="e.g. 28" step="0.1" min="0.1" required oninput="calcAuto()" /></div>
+        <div class="form-group"><label>Cost per kg (₹) *</label><input type="number" id="fCost" placeholder="e.g. 350" min="1" required oninput="calcAuto()" /></div>
       </div>
-      <div class="form-group">
-        <label>Extra Costs (₹) <small>feed, transport, medicine…</small></label>
-        <input type="number" id="fExtra" placeholder="0" min="0" value="0" oninput="calcAuto()" />
-      </div>
-
-      <!-- Auto-calc strip -->
+      <div class="form-group"><label>Extra Costs (₹) <small>feed, transport, medicine…</small></label><input type="number" id="fExtra" placeholder="0" min="0" value="0" oninput="calcAuto()" /></div>
       <div class="calc-strip" id="calcStrip" style="display:none">
         <span>Total Cost: <strong id="calcTotal">—</strong></span>
         <span style="color:#166534;opacity:0.7"><strong id="calcPerKg">—</strong></span>
       </div>
-
       <div class="form-section">Other Info</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Added By</label>
-          <input type="text" id="fAddedBy" placeholder="Your name" list="nameList" />
-          <datalist id="nameList"></datalist>
-        </div>
-        <div class="form-group">
-          <label>Notes <small>color, health…</small></label>
-          <input type="text" id="fNotes" placeholder="e.g. Brown, vaccinated" />
-        </div>
+        <div class="form-group"><label>Added By</label><input type="text" id="fAddedBy" placeholder="Your name" list="nameList" /><datalist id="nameList"></datalist></div>
+        <div class="form-group"><label>Notes <small>color, health…</small></label><input type="text" id="fNotes" placeholder="e.g. Brown, vaccinated" /></div>
       </div>
-
       <div id="goatFormErr" class="error-msg hidden"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-gray" onclick="closeModal('goatModal')">Cancel</button>
@@ -191,67 +150,110 @@
         <button type="submit" id="saveGoatBtn" class="btn btn-primary">💾 Save</button>
       </div>
     </form>
-    </div>
-  </div>
+  </div></div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- MODAL: Sell Goat                                        -->
-<!-- ═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Sell Goat -->
 <div id="sellModal" class="modal hidden">
-  <div class="modal-box">
-    <div class="modal-inner">
-    <div class="modal-header">
-      <h2>💰 Mark as Sold</h2>
-      <button class="modal-close" onclick="closeModal('sellModal')">✕</button>
-    </div>
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header"><h2>💰 Mark as Sold</h2><button class="modal-close" onclick="closeModal('sellModal')">✕</button></div>
     <div id="sellInfoBox" class="sell-info-box"></div>
     <form id="sellForm">
       <input type="hidden" id="sellId" />
+      <div class="form-section">Sale Details</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Selling Price (₹) *</label>
-          <input type="number" id="sellPrice" placeholder="e.g. 12000" min="1" required oninput="updateSellPreview()" />
-        </div>
-        <div class="form-group">
-          <label>Sale Date *</label>
-          <input type="date" id="sellDate" required />
-        </div>
+        <div class="form-group"><label>Selling Price (₹) *</label><input type="number" id="sellPrice" placeholder="e.g. 12000" min="1" required oninput="updateSellPreview()" /></div>
+        <div class="form-group"><label>Sale Weight (kg)</label><input type="number" id="sellWeight" placeholder="Current weight" step="0.1" min="0.1" oninput="updateSellPreview()" /></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Buyer Name</label>
-          <input type="text" id="sellBuyer" placeholder="Buyer's name" />
+        <div class="form-group"><label>Sale Date *</label><input type="date" id="sellDate" required /></div>
+        <div class="form-group"><label>Payment Mode</label>
+          <select id="sellFinalMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
         </div>
-        <div class="form-group">
-          <label>Buyer Phone</label>
-          <input type="tel" id="sellPhone" placeholder="Phone number" />
+      </div>
+      <div class="form-section">Buyer Info</div>
+      <div class="form-row">
+        <div class="form-group"><label>Buyer Name</label><input type="text" id="sellBuyer" placeholder="Buyer's name" /></div>
+        <div class="form-group"><label>Buyer Phone</label><input type="tel" id="sellPhone" placeholder="Phone number" /></div>
+      </div>
+      <div class="form-section">Advance / Booking Amount <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></div>
+      <div class="form-row">
+        <div class="form-group"><label>Advance Amount (₹)</label><input type="number" id="sellAdvance" placeholder="0" min="0" value="0" oninput="updateSellPreview()" /></div>
+        <div class="form-group"><label>Advance Mode</label>
+          <select id="sellAdvanceMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option></select>
         </div>
       </div>
       <div id="sellPreview" class="profit-preview hidden"></div>
       <div id="sellFormErr" class="error-msg hidden"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-gray" onclick="closeModal('sellModal')">Cancel</button>
-        <button type="submit" id="confirmSaleBtn" class="btn btn-primary">✅ Confirm Sale</button>
+        <button type="submit" id="confirmSaleBtn" class="btn btn-primary">✅ Confirm</button>
       </div>
     </form>
-    </div>
-  </div>
+  </div></div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ -->
-<!-- MODAL: View Goat detail                                 -->
-<!-- ═══════════════════════════════════════════════════════ -->
+<!-- MODAL: Collect Remaining -->
+<div id="finalizeModal" class="modal hidden">
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header"><h2>💳 Collect Remaining</h2><button class="modal-close" onclick="closeModal('finalizeModal')">✕</button></div>
+    <div id="finalizeInfoBox" class="sell-info-box"></div>
+    <form id="finalizeForm">
+      <input type="hidden" id="finalizeId" />
+      <div class="form-group"><label>Final Payment Mode *</label>
+        <select id="finalizeFinalMode" required><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
+      </div>
+      <div id="finalizeFormErr" class="error-msg hidden"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-gray" onclick="closeModal('finalizeModal')">Cancel</button>
+        <button type="submit" id="finalizeBtn" class="btn btn-primary">✅ Mark Fully Paid</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+<!-- MODAL: View Goat -->
 <div id="viewModal" class="modal hidden">
-  <div class="modal-box">
-    <div class="modal-inner">
-    <div class="modal-header">
-      <h2 id="viewTitle">Goat Details</h2>
-      <button class="modal-close" onclick="closeModal('viewModal')">✕</button>
-    </div>
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header"><h2 id="viewTitle">Goat Details</h2><button class="modal-close" onclick="closeModal('viewModal')">✕</button></div>
     <div id="viewContent"></div>
+  </div></div>
+</div>
+
+<!-- MODAL: Bulk Add -->
+<div id="bulkModal" class="modal hidden">
+  <div class="modal-box modal-box-wide"><div class="modal-inner">
+    <div class="modal-header"><h2>📦 Bulk Add — Mandi Mode</h2><button class="modal-close" onclick="closeModal('bulkModal')">✕</button></div>
+    <p class="bulk-hint">Quickly add multiple goats bought from the market in one go.</p>
+    <div class="bulk-table-wrap">
+      <table class="bulk-table">
+        <thead><tr><th>Goat ID *</th><th>Breed</th><th>Weight(kg)*</th><th>Cost/kg(₹)*</th><th>Extra(₹)</th><th>Total</th><th>Notes</th><th></th></tr></thead>
+        <tbody id="bulkTableBody"></tbody>
+      </table>
     </div>
-  </div>
+    <button class="btn btn-secondary" style="margin-top:10px;width:100%" onclick="bulkAddRow()">＋ Add Row</button>
+    <div id="bulkErr" class="error-msg" style="margin-top:10px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="closeModal('bulkModal')">Cancel</button>
+      <button class="btn btn-primary" id="bulkSaveBtn" onclick="saveBulkGoats()">💾 Save All Goats</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- MODAL: Market Rate Calculator -->
+<div id="marketCalcModal" class="modal hidden">
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header"><h2>🏷️ Market Rate Calculator</h2><button class="modal-close" onclick="closeModal('marketCalcModal')">✕</button></div>
+    <p class="bulk-hint">Enter today's market rate per kg to see which goats are profitable to sell right now.</p>
+    <div class="mc-input-row">
+      <input type="number" id="marketRateInput" class="search-input" placeholder="e.g. 500" min="1" oninput="runMarketCalc()" />
+      <span class="mc-unit">₹ / kg</span>
+    </div>
+    <div id="marketCalcResults"></div>
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="closeModal('marketCalcModal')">Close</button>
+    </div>
+  </div></div>
 </div>
 
 <script src="app.js"></script>
