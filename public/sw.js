@@ -1,9 +1,14 @@
-const CACHE = 'goat-ledger-v1';
+const CACHE = 'goat-ledger-v2';
 const STATIC = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
+  '/utils.js',
+  '/dashboard.js',
+  '/stock.js',
+  '/sales.js',
+  '/tools.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
 

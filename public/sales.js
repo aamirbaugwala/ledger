@@ -1,0 +1,257 @@
+// ═══════════════════════════════════════════════════════════
+//  sales.js — Sales tab: table view with filter/sort/export
+// ═══════════════════════════════════════════════════════════
+
+let _salesData    = [];   // full data from API
+let _salesFiltered = [];  // after filters applied
+let _salesSort    = { col: 'sale_date', dir: 'desc' };
+
+// ── Load ────────────────────────────────────────────────────
+async function loadSold() {
+  const container = document.getElementById('soldList');
+  container.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-3)">Loading sales…</div>`;
+  // Fetch ALL goats then exclude available — so booked goats show in sales tab too
+  const all = await api('/api/goats') || [];
+  _salesData = all.filter(g => g.status === 'sold' || g.status === 'booked');
+  _applyFiltersAndSort();
+}
+
+// ── Filter controls (read from DOM) ─────────────────────────
+function filterSold() { _applyFiltersAndSort(); }
+
+function _applyFiltersAndSort() {
+  const q       = (document.getElementById('soldSearch')?.value || '').toLowerCase();
+  const status  = document.getElementById('salesFilterStatus')?.value  || '';
+  const payment = document.getElementById('salesFilterPayment')?.value || '';
+  const dateFrom = document.getElementById('salesDateFrom')?.value || '';
+  const dateTo   = document.getElementById('salesDateTo')?.value   || '';
+
+  _salesFiltered = _salesData.filter(g => {
+    const saleDate = g.sale_date ? String(g.sale_date).slice(0,10) : '';
+    const matchQ = !q ||
+      g.goat_id.toLowerCase().includes(q) ||
+      (g.buyer_name  || '').toLowerCase().includes(q) ||
+      (g.breed       || '').toLowerCase().includes(q) ||
+      (g.buyer_phone || '').toLowerCase().includes(q);
+    const matchStatus  = !status  || g.status === status;
+    const matchPayment = !payment || g.final_payment_mode === payment || g.advance_mode === payment;
+    const matchFrom    = !dateFrom || saleDate >= dateFrom;
+    const matchTo      = !dateTo   || saleDate <= dateTo;
+    return matchQ && matchStatus && matchPayment && matchFrom && matchTo;
+  });
+
+  // Sort
+  const { col, dir } = _salesSort;
+  _salesFiltered.sort((a, b) => {
+    let va, vb;
+    if (col === 'profit') {
+      const costA = parseFloat(a.cost_price) + parseFloat(a.extra_costs || 0);
+      const costB = parseFloat(b.cost_price) + parseFloat(b.extra_costs || 0);
+      va = parseFloat(a.selling_price) - costA;
+      vb = parseFloat(b.selling_price) - costB;
+    } else if (col === 'weight_kg') {
+      va = parseFloat(a.sale_weight_kg || a.weight_kg || 0);
+      vb = parseFloat(b.sale_weight_kg || b.weight_kg || 0);
+    } else if (col === 'selling_price') {
+      va = parseFloat(a.selling_price); vb = parseFloat(b.selling_price);
+    } else if (col === 'sale_date') {
+      va = a.sale_date || ''; vb = b.sale_date || '';
+    } else {
+      va = (a[col] || '').toString().toLowerCase();
+      vb = (b[col] || '').toString().toLowerCase();
+    }
+    if (va < vb) return dir === 'asc' ? -1 :  1;
+    if (va > vb) return dir === 'asc' ?  1 : -1;
+    return 0;
+  });
+
+  renderSalesTable(_salesFiltered);
+}
+
+function _setSalesSort(col) {
+  if (_salesSort.col === col) {
+    _salesSort.dir = _salesSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _salesSort.col = col;
+    _salesSort.dir = col === 'sale_date' ? 'desc' : 'asc';
+  }
+  _applyFiltersAndSort();
+}
+
+function _sortIcon(col) {
+  if (_salesSort.col !== col) return `<span class="sort-icon">↕</span>`;
+  return `<span class="sort-icon active">${_salesSort.dir === 'asc' ? '↑' : '↓'}</span>`;
+}
+
+// ── Render table ─────────────────────────────────────────────
+function renderSalesTable(goats) {
+  const container = document.getElementById('soldList');
+
+  // Summary bar totals
+  const totalRev     = goats.reduce((s, g) => s + parseFloat(g.selling_price || 0), 0);
+  const totalCostAll = goats.reduce((s, g) => s + parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0), 0);
+  const totalProfit  = totalRev - totalCostAll;
+  const pending      = goats.filter(g => g.status === 'booked').length;
+  const fullyPaid    = goats.filter(g => g.status === 'sold').length;
+  const totalPending = goats.filter(g => g.status === 'booked')
+                            .reduce((s, g) => s + parseFloat(g.selling_price || 0) - parseFloat(g.advance_amount || 0), 0);
+  const avgProfit    = goats.length ? (totalProfit / goats.length) : 0;
+  const margin       = totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) : 0;
+
+  if (!goats.length) {
+    container.innerHTML = `
+      <div class="sales-summary-bar">
+        <div class="ssb-item"><span class="ssb-label">Showing</span><span class="ssb-val">0 records</span></div>
+      </div>
+      <div class="empty-state">
+        <span class="ei">💰</span>
+        <h3>No sales match your filters</h3>
+        <p>Try adjusting your search or filters</p>
+      </div>`;
+    return;
+  }
+
+  const rows = goats.map(g => {
+    const cost       = parseFloat(g.cost_price || 0);
+    const extra      = parseFloat(g.extra_costs || 0);
+    const totalCost  = cost + extra;
+    const sellPrice  = parseFloat(g.selling_price || 0);
+    const profit     = sellPrice - totalCost;
+    const marginPct  = totalCost > 0 ? ((profit / totalCost) * 100).toFixed(0) : 0;
+    const advance    = parseFloat(g.advance_amount || 0);
+    const remaining  = sellPrice - advance;
+    const wt         = parseFloat(g.sale_weight_kg || g.weight_kg || 0);
+    const pricePerKg = wt > 0 ? Math.round(sellPrice / wt) : null;
+    const saleDate   = g.sale_date ? String(g.sale_date).slice(0,10) : '—';
+    const isBooked   = g.status === 'booked';
+    const profitCls  = profit >= 0 ? 'profit-pos' : 'profit-neg';
+
+    const statusBadge = isBooked
+      ? `<span class="st-badge st-booked">⏳ Booked</span>`
+      : `<span class="st-badge st-sold">✅ Sold</span>`;
+
+    // Weight cell: show sale weight or purchase weight
+    const wtCell = wt > 0
+      ? `<span class="stc-main">${wt} kg</span>${pricePerKg ? `<span class="stc-sub">₹${fmt(pricePerKg)}/kg</span>` : ''}`
+      : `<span class="stc-muted">—</span>`;
+
+    // Financials cell: sale price + cost breakdown
+    const finCell = `
+      <span class="stc-main">₹${fmt(sellPrice)}</span>
+      <span class="stc-sub">Cost ₹${fmt(cost)}${extra > 0 ? ` + ₹${fmt(extra)}` : ''}</span>`;
+
+    // Profit cell: amount + margin %
+    const profitCell = `
+      <span class="stc-main ${profitCls}">${profit >= 0 ? '+' : ''}₹${fmt(profit)}</span>
+      <span class="stc-sub ${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit >= 0 ? '▲' : '▼'} ${Math.abs(marginPct)}% margin</span>`;
+
+    // Buyer cell: name + phone stacked
+    const buyerCell = g.buyer_name
+      ? `<span class="stc-main">${esc(g.buyer_name)}</span>${g.buyer_phone ? `<span class="stc-sub">📞 ${esc(g.buyer_phone)}</span>` : ''}`
+      : `<span class="stc-muted">—</span>`;
+
+    // Payment cell: mode + advance info
+    let payCell;
+    if (isBooked) {
+      payCell = advance > 0
+        ? `<span class="stc-main pay-adv-badge">Adv ₹${fmt(advance)}</span><span class="stc-sub pay-due">₹${fmt(remaining)} due</span>`
+        : `<span class="stc-main pay-due">₹${fmt(remaining)} due</span>`;
+    } else {
+      const mode = g.final_payment_mode || g.advance_mode || '';
+      payCell = mode
+        ? `<span class="stc-main"><span class="pay-badge">${esc(mode)}</span></span>${advance > 0 && g.advance_mode ? `<span class="stc-sub">Adv ₹${fmt(advance)}</span>` : ''}`
+        : `<span class="stc-muted">—</span>`;
+    }
+
+    // Tag + breed stacked
+    const tagCell = `
+      <span class="goat-tag-sm">🐐 ${esc(g.goat_id)}</span>
+      ${g.breed ? `<span class="stc-sub">${esc(g.breed)}</span>` : ''}`;
+
+    return `<tr class="${isBooked ? 'row-booked' : ''}">
+      <td>${tagCell}</td>
+      <td>${statusBadge}</td>
+      <td>${wtCell}</td>
+      <td>${finCell}</td>
+      <td>${profitCell}</td>
+      <td>${buyerCell}</td>
+      <td>${payCell}</td>
+      <td><span class="stc-main">${saleDate}</span></td>
+      <td>
+        <div class="tbl-actions">
+          <button class="btn btn-wa btn-sm" onclick="sendWhatsApp(${g.id})" title="WhatsApp Receipt">📱</button>
+          <button class="btn btn-gray btn-sm" onclick="viewGoat(${g.id})" title="View Details">👁</button>
+          ${isBooked
+            ? `<button class="btn btn-primary btn-sm" onclick="openFinalizeModal(${g.id})" title="Collect Payment">💳</button>`
+            : `<button class="btn btn-gray btn-sm" onclick="undoSale(${g.id}, this)" title="Undo Sale">↩</button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteGoat(${g.id}, 'sold')" title="Delete">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="sales-summary-bar">
+      <div class="ssb-item"><span class="ssb-label">Showing</span><span class="ssb-val">${goats.length} of ${_salesData.length}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Revenue</span><span class="ssb-val">₹${fmt(totalRev)}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Profit</span><span class="ssb-val ${totalProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${totalProfit >= 0 ? '+' : ''}₹${fmt(totalProfit)}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Margin</span><span class="ssb-val">${margin}%</span></div>
+      <div class="ssb-item"><span class="ssb-label">Avg Profit</span><span class="ssb-val ${avgProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${avgProfit >= 0 ? '+' : ''}₹${fmt(avgProfit)}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Paid</span><span class="ssb-val">${fullyPaid}</span></div>
+      <div class="ssb-item ssb-warn"><span class="ssb-label">⏳ Pending</span><span class="ssb-val">${pending} · ₹${fmt(totalPending)}</span></div>
+      <button class="btn btn-gray btn-sm ssb-export" onclick="exportSalesCSV()">⬇ CSV</button>
+    </div>
+    <div class="sales-table-wrap">
+      <table class="sales-table">
+        <thead>
+          <tr>
+            <th onclick="_setSalesSort('goat_id')" class="sortable">Tag / Breed ${_sortIcon('goat_id')}</th>
+            <th onclick="_setSalesSort('status')"   class="sortable">Status ${_sortIcon('status')}</th>
+            <th onclick="_setSalesSort('weight_kg')" class="sortable">Weight ${_sortIcon('weight_kg')}</th>
+            <th onclick="_setSalesSort('selling_price')" class="sortable num">Price / Cost ${_sortIcon('selling_price')}</th>
+            <th onclick="_setSalesSort('profit')"   class="sortable num">Profit / Margin ${_sortIcon('profit')}</th>
+            <th onclick="_setSalesSort('buyer_name')" class="sortable">Buyer ${_sortIcon('buyer_name')}</th>
+            <th>Payment</th>
+            <th onclick="_setSalesSort('sale_date')" class="sortable">Date ${_sortIcon('sale_date')}</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── CSV Export ───────────────────────────────────────────────
+function exportSalesCSV() {
+  if (!_salesFiltered.length) { showToast('No data to export', 'warning'); return; }
+  const headers = ['Goat ID','Breed','Status','Purchase Date','Buy Weight (kg)','Sale Weight (kg)',
+    'Cost Price (₹)','Extra Costs (₹)','Total Cost (₹)','Sale Price (₹)','Profit (₹)','Margin %',
+    'Buyer Name','Buyer Phone','Advance Amount (₹)','Advance Mode','Final Payment Mode','Sale Date','Added By','Notes'];
+  const rows = _salesFiltered.map(g => {
+    const cost      = parseFloat(g.cost_price || 0);
+    const extra     = parseFloat(g.extra_costs || 0);
+    const totalCost = cost + extra;
+    const sellPrice = parseFloat(g.selling_price || 0);
+    const profit    = sellPrice - totalCost;
+    const marginPct = totalCost > 0 ? ((profit / totalCost) * 100).toFixed(1) : '0';
+    const saleDate  = g.sale_date ? String(g.sale_date).slice(0,10) : '';
+    const purchDate = g.purchase_date ? String(g.purchase_date).slice(0,10) : '';
+    return [
+      g.goat_id, g.breed || '', g.status,
+      purchDate, g.weight_kg || '', g.sale_weight_kg || '',
+      cost.toFixed(0), extra.toFixed(0), totalCost.toFixed(0),
+      sellPrice.toFixed(0), profit.toFixed(0), marginPct,
+      g.buyer_name || '', g.buyer_phone || '',
+      parseFloat(g.advance_amount || 0).toFixed(0),
+      g.advance_mode || '', g.final_payment_mode || '',
+      saleDate, g.added_by || '', g.notes || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+  const csv  = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `sales-${today()}.csv`;
+  a.click();
+  showToast('CSV exported ✅', 'success', 2000);
+}

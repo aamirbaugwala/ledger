@@ -46,6 +46,7 @@
   <div class="sidebar-tools">
     <div class="sidebar-tools-label">Quick Tools</div>
     <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openBulkModal,80)">📦 Bulk Add (Mandi)</button>
+    <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openImportModal,80)">📥 Import from Excel</button>
     <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openMarketCalc,80)">🏷️ Market Rate Calc</button>
     <button class="sidebar-tool-btn" id="pwaInstallBtn" style="display:none" onclick="installPWA()">📲 Install App</button>
   </div>
@@ -92,16 +93,49 @@
   <section id="sec-stock" class="section">
     <div class="section-toolbar">
       <input type="text" id="stockSearch" placeholder="🔍 Search by ID, breed, notes…" oninput="filterStock()" onkeydown="searchEnterSell(event)" class="search-input" />
+      <select id="stockFilterStatus" onchange="filterStock()" class="filter-select">
+        <option value="">All Status</option>
+        <option value="available">✅ Available</option>
+        <option value="booked">⏳ Booked</option>
+      </select>
+      <button id="stockViewToggle" class="btn btn-gray btn-sm" onclick="toggleStockView()">🃏 Cards View</button>
       <button class="btn btn-primary" onclick="openAddModal()">＋ Add</button>
     </div>
-    <div id="stockList" class="goat-grid"></div>
+    <div id="stockList"></div>
+    <!-- Bulk Action Bar — slides up when items are selected -->
+    <div id="stockBulkBar" class="bulk-action-bar">
+      <span class="bulk-bar-count">0 selected</span>
+      <div class="bulk-bar-actions">
+        <button class="btn btn-gray btn-sm" onclick="_bulkExportStockCSV()">⬇ Export CSV</button>
+        <button class="btn btn-danger btn-sm" onclick="_bulkDeleteSelected()">🗑 Delete</button>
+        <button class="btn btn-gray btn-sm" onclick="_clearStockSelection()">✕ Clear</button>
+      </div>
+    </div>
     <button class="fab" onclick="openAddModal()" title="Add Goat">＋</button>
   </section>
   <section id="sec-sold" class="section">
-    <div class="section-toolbar">
-      <input type="text" id="soldSearch" placeholder="🔍 Search by ID, buyer, breed…" oninput="filterSold()" class="search-input" />
+    <div class="sales-filters">
+      <div class="sales-filters-row1">
+        <input type="text" id="soldSearch" placeholder="🔍 Search ID, buyer, breed, phone…" oninput="filterSold()" class="search-input" />
+      </div>
+      <div class="sales-filters-row2">
+        <select id="salesFilterStatus" onchange="filterSold()" class="filter-select">
+          <option value="">All Status</option>
+          <option value="sold">✅ Sold</option>
+          <option value="booked">🔖 Booked</option>
+        </select>
+        <select id="salesFilterPayment" onchange="filterSold()" class="filter-select">
+          <option value="">All Payments</option>
+          <option value="cash">💵 Cash</option>
+          <option value="online">📱 Online</option>
+          <option value="cash+online">💵+📱 Split</option>
+        </select>
+        <input type="date" id="salesDateFrom" onchange="filterSold()" class="filter-date" title="From date" />
+        <input type="date" id="salesDateTo"   onchange="filterSold()" class="filter-date" title="To date" />
+        <button class="btn btn-gray btn-sm" onclick="document.getElementById('salesFilterStatus').value='';document.getElementById('salesFilterPayment').value='';document.getElementById('salesDateFrom').value='';document.getElementById('salesDateTo').value='';document.getElementById('soldSearch').value='';filterSold()">✕ Clear</button>
+      </div>
     </div>
-    <div id="soldList" class="goat-grid"></div>
+    <div id="soldList"></div>
   </section>
 </main>
 
@@ -128,6 +162,10 @@
           </datalist>
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Purchase Date *</label><input type="date" id="fPurchaseDate" required /></div>
+        <div class="form-group"><label>Added By</label><input type="text" id="fAddedBy" placeholder="Your name" list="nameList" /><datalist id="nameList"></datalist></div>
+      </div>
       <div class="form-section">Weight &amp; Cost</div>
       <div class="form-row">
         <div class="form-group"><label>Weight (kg) *</label><input type="number" id="fWeight" placeholder="e.g. 28" step="0.1" min="0.1" required oninput="calcAuto()" /></div>
@@ -140,8 +178,7 @@
       </div>
       <div class="form-section">Other Info</div>
       <div class="form-row">
-        <div class="form-group"><label>Added By</label><input type="text" id="fAddedBy" placeholder="Your name" list="nameList" /><datalist id="nameList"></datalist></div>
-        <div class="form-group"><label>Notes <small>color, health…</small></label><input type="text" id="fNotes" placeholder="e.g. Brown, vaccinated" /></div>
+        <div class="form-group"><label>Notes <small>color, health, vaccinations…</small></label><input type="text" id="fNotes" placeholder="e.g. Brown, vaccinated" /></div>
       </div>
       <div id="goatFormErr" class="error-msg hidden"></div>
       <div class="modal-actions">
@@ -225,6 +262,16 @@
   <div class="modal-box modal-box-wide"><div class="modal-inner">
     <div class="modal-header"><h2>📦 Bulk Add — Mandi Mode</h2><button class="modal-close" onclick="closeModal('bulkModal')">✕</button></div>
     <p class="bulk-hint">Quickly add multiple goats bought from the market in one go.</p>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="form-group">
+        <label>Purchase Date (for all) *</label>
+        <input type="date" id="bulkPurchaseDate" required />
+      </div>
+      <div class="form-group">
+        <label>Added By (for all)</label>
+        <input type="text" id="bulkAddedBy" placeholder="Your name" list="nameList" />
+      </div>
+    </div>
     <div class="bulk-table-wrap">
       <table class="bulk-table">
         <thead><tr><th>Goat ID *</th><th>Breed</th><th>Weight(kg)*</th><th>Cost/kg(₹)*</th><th>Extra(₹)</th><th>Total</th><th>Notes</th><th></th></tr></thead>
@@ -236,6 +283,90 @@
     <div class="modal-actions">
       <button class="btn btn-gray" onclick="closeModal('bulkModal')">Cancel</button>
       <button class="btn btn-primary" id="bulkSaveBtn" onclick="saveBulkGoats()">💾 Save All Goats</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- MODAL: Import from Excel -->
+<div id="importModal" class="modal hidden">
+  <div class="modal-box modal-box-wide"><div class="modal-inner">
+    <div class="modal-header">
+      <h2>📥 Import from Excel</h2>
+      <button class="modal-close" onclick="closeModal('importModal')">✕</button>
+    </div>
+
+    <!-- Step 1: Batch Settings -->
+    <div class="imp-step-label">① Batch Settings</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Goat ID Prefix</label>
+        <input type="text" id="impPrefix" value="G-" placeholder="G-" />
+      </div>
+      <div class="form-group">
+        <label>Start Number</label>
+        <input type="number" id="impStartNum" value="1" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Breed (same for all)</label>
+        <input type="text" id="impBreed" placeholder="e.g. Sojat" list="breedList" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Purchase Date *</label>
+        <input type="date" id="impPurchaseDate" />
+      </div>
+      <div class="form-group">
+        <label>Added By</label>
+        <input type="text" id="impAddedBy" placeholder="Your name" list="nameList" />
+      </div>
+    </div>
+
+    <!-- Step 2: Shared Costs -->
+    <div class="imp-step-label">② Shared Batch Costs <small style="font-weight:400;text-transform:none;letter-spacing:0">(distributed proportionally by weight)</small></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Transportation (₹ total)</label>
+        <input type="number" id="impTransport" value="0" min="0" oninput="refreshImportPreview()" />
+      </div>
+      <div class="form-group">
+        <label>HKB Lawn / Dharmkanta (₹)</label>
+        <input type="number" id="impHKB" value="0" min="0" oninput="refreshImportPreview()" />
+      </div>
+      <div class="form-group">
+        <label>Other Expenses (₹ total)</label>
+        <input type="number" id="impOther" value="0" min="0" oninput="refreshImportPreview()" />
+      </div>
+    </div>
+
+    <!-- Step 3: Paste Data -->
+    <div class="imp-step-label">③ Paste Weight Data from Excel</div>
+    <p class="bulk-hint" style="margin-bottom:8px">
+      Copy 3 columns from Excel and paste below:<br/>
+      <strong>Col 1:</strong> Original Weight &nbsp;|&nbsp;
+      <strong>Col 2:</strong> Expected Weight % (e.g. 95%) &nbsp;|&nbsp;
+      <strong>Col 3:</strong> Rate per kg (e.g. 530)<br/>
+      <em>Can also paste just 1 column (weights only) — set defaults above.</em>
+    </p>
+    <div class="form-row" style="margin-bottom:6px">
+      <div class="form-group">
+        <label>Default Expected Weight %</label>
+        <input type="number" id="impDefaultPct" value="95" min="1" max="100" step="0.1" oninput="refreshImportPreview()" />
+      </div>
+      <div class="form-group">
+        <label>Default Rate per kg (₹)</label>
+        <input type="number" id="impDefaultRate" value="530" min="1" oninput="refreshImportPreview()" />
+      </div>
+    </div>
+    <textarea id="impPasteArea" class="imp-paste-area" placeholder="Paste data here…&#10;e.g.&#10;46&#09;95%&#09;530&#10;58&#09;95%&#09;530&#10;68&#09;95%&#09;530" oninput="refreshImportPreview()"></textarea>
+
+    <!-- Preview -->
+    <div id="impPreview"></div>
+
+    <div id="impErr" class="error-msg hidden"></div>
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="closeModal('importModal')">Cancel</button>
+      <button class="btn btn-primary" id="impSaveBtn" onclick="confirmImport()" style="display:none">📥 Import Goats</button>
     </div>
   </div></div>
 </div>
@@ -256,6 +387,11 @@
   </div></div>
 </div>
 
+<script src="utils.js"></script>
+<script src="dashboard.js"></script>
+<script src="stock.js"></script>
+<script src="sales.js"></script>
+<script src="tools.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

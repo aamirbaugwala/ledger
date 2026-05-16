@@ -455,6 +455,63 @@ tbody tr:hover { background: #f8fafc; }
 .fab:hover  { transform: scale(1.1); }
 .fab:active { transform: scale(0.93); }
 
+/* ── Bulk action bar ────────────────────────────────────────── */
+.bulk-action-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 95;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 12px 18px;
+  background: #1e293b;
+  border-top: 2px solid var(--green);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1);
+  pointer-events: none;
+}
+.bulk-action-bar.visible {
+  transform: translateY(0);
+  pointer-events: all;
+}
+/* Push FAB up when bar is visible */
+.bulk-action-bar.visible ~ .fab {
+  bottom: 84px;
+}
+.bulk-bar-count {
+  color: #e2e8f0; font-weight: 700; font-size: 0.95rem;
+  white-space: nowrap;
+}
+.bulk-bar-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+}
+
+/* ── Stock table checkbox column ────────────────────────────── */
+.stk-cb-cell {
+  width: 36px; padding: 0 6px !important; text-align: center !important;
+  cursor: pointer;
+}
+.stk-cb-cell input[type="checkbox"] {
+  width: 16px; height: 16px; cursor: pointer; accent-color: var(--green);
+  vertical-align: middle;
+}
+tr.row-selected td { background: rgba(22,163,74,0.08) !important; }
+
+/* ── Stock card selection ───────────────────────────────────── */
+.stk-card { position: relative; }
+.stk-cb-overlay {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  background: rgba(255,255,255,0.9); border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  cursor: pointer;
+}
+.stk-cb-overlay input[type="checkbox"] {
+  width: 16px; height: 16px; cursor: pointer; accent-color: var(--green);
+}
+.stk-card.stk-selected {
+  border: 2px solid var(--green) !important;
+  box-shadow: 0 0 0 3px rgba(22,163,74,0.18) !important;
+}
+
 /* ── Quick actions ────────────────────────────────────────────── */
 .quick-actions {
   display: grid; grid-template-columns: repeat(3, 1fr);
@@ -547,6 +604,155 @@ tbody tr:hover { background: #f8fafc; }
 .mc-details { display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 0.78rem; color: var(--text-2); align-items: center; }
 .mc-arrow { color: var(--text-3); }
 .mc-pnl { font-weight: 800; font-size: 0.82rem; }
+
+/* ── Sales Table ──────────────────────────────────────────────── */
+.sales-filters { margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+.sales-filters-row1 { display: flex; gap: 8px; }
+.sales-filters-row2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.filter-select {
+  padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 10px;
+  font-size: 0.82rem; outline: none; background: var(--card); color: var(--text);
+  cursor: pointer; font-family: inherit; transition: border-color 0.18s;
+}
+.filter-select:focus { border-color: var(--green); }
+.filter-date {
+  padding: 9px 10px; border: 1.5px solid var(--border); border-radius: 10px;
+  font-size: 0.82rem; outline: none; background: var(--card); color: var(--text);
+  font-family: inherit; transition: border-color 0.18s;
+}
+.filter-date:focus { border-color: var(--green); }
+
+.sales-summary-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 10px;
+  box-shadow: var(--shadow);
+}
+.ssb-item { display: flex; flex-direction: column; gap: 1px; }
+.ssb-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3); font-weight: 700; }
+.ssb-val   { font-size: 0.9rem; font-weight: 800; color: var(--text); }
+.ssb-export { margin-left: auto; }
+
+.sales-table-wrap {
+  background: var(--card); border-radius: var(--radius);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.sales-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 820px; }
+.sales-table thead th {
+  background: #f8fafc; padding: 11px 14px; text-align: left;
+  font-weight: 700; font-size: 0.66rem; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
+  border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 1;
+}
+.sales-table thead th.sortable { cursor: pointer; user-select: none; }
+.sales-table thead th.sortable:hover { color: var(--green); background: #f0fdf4; }
+.sales-table thead th.num { text-align: right; }
+.sort-icon       { color: var(--text-3); font-size: 0.75rem; margin-left: 3px; }
+.sort-icon.active { color: var(--green); }
+.sales-table tbody td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.sales-table tbody tr:last-child td { border-bottom: none; }
+.sales-table tbody tr:hover { background: #f8fafc; }
+.sales-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.profit-pos { color: #15803d; font-weight: 700; }
+.profit-neg { color: var(--red); font-weight: 700; }
+.goat-tag-sm { font-weight: 800; color: var(--green-deeper); font-size: 0.88rem; display: block; }
+.st-badge { font-size: 0.65rem; padding: 3px 9px; border-radius: 20px; font-weight: 700; text-transform: uppercase; }
+.st-sold   { background: #dcfce7; color: #166534; }
+.st-booked { background: #fef3c7; color: #92400e; }
+.st-avail  { background: #dcfce7; color: #166534; }
+
+/* ── Stock info cards (table view) ───────────────────────────── */
+.stk-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.stk-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stk-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stk-booked { border-left: 3px solid var(--amber); background: #fffbeb; }
+.stk-card-top {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+}
+.stk-breed {
+  display: block; font-size: 0.75rem; color: var(--text-3);
+  font-weight: 500; margin-top: 2px;
+}
+.stk-info-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px;
+}
+.stk-info-item {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.stk-full { grid-column: 1 / -1; }
+.stk-lbl {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-3);
+}
+.stk-lbl small { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.stk-val  { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.stk-amber { color: var(--amber) !important; }
+.stk-blue  { color: var(--blue)  !important; }
+.stk-booked-bar {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  background: #fff7ed; border: 1px solid #fed7aa;
+  border-radius: 10px; padding: 8px 12px;
+  font-size: 0.82rem; color: #92400e;
+}
+.stk-actions {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding-top: 10px; border-top: 1px solid #f1f5f9;
+}
+.stk-actions .btn { flex: 1; min-width: 70px; justify-content: center; }
+
+@media (min-width: 640px) {
+  .stk-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1100px) {
+  .stk-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.tbl-actions { display: flex; gap: 4px; }
+.row-booked { background: #fffbeb; }
+
+/* Stacked cell text */
+.stc-main { display: block; font-size: 0.86rem; font-weight: 600; color: var(--text); line-height: 1.3; }
+.stc-sub  { display: block; font-size: 0.72rem; color: var(--text-3); font-weight: 500; margin-top: 2px; line-height: 1.3; }
+.stc-muted { display: block; font-size: 0.82rem; color: var(--text-3); }
+.pay-adv-badge { background: #eff6ff; color: #1d4ed8; border-radius: 6px; padding: 2px 7px; font-size: 0.72rem !important; font-weight: 700 !important; }
+.pay-due { color: #c2410c !important; font-weight: 700 !important; }
+.ssb-warn .ssb-val { color: var(--amber); font-weight: 700; }
+
+/* ── Excel Import Modal ───────────────────────────────────── */
+.imp-step-label {
+  font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--green-deeper);
+  background: var(--green-light); border-left: 3px solid var(--green);
+  padding: 6px 12px; border-radius: 0 8px 8px 0; margin: 14px 0 10px;
+}
+.imp-paste-area {
+  width: 100%; min-height: 120px; padding: 12px 14px;
+  border: 1.5px solid #e2e8f0; border-radius: 11px;
+  font-size: 0.82rem; font-family: 'Courier New', monospace;
+  outline: none; resize: vertical; line-height: 1.7;
+  background: #fafafa; color: var(--text); transition: all 0.18s;
+}
+.imp-paste-area:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,0.1); background: #fff; }
+.imp-preview-bar {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+  background: var(--green-light); border: 1px solid #bbf7d0;
+  border-radius: 10px; padding: 10px 14px; margin: 12px 0 6px;
+  font-size: 0.82rem; color: var(--green-deeper);
+}
+
 
 /* ── Desktop ──────────────────────────────────────────────────── */
 @media (min-width: 768px) {

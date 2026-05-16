@@ -126,11 +126,12 @@ app.post('/api/goats', (req, res, next) => {
     return res.status(400).json({ error: 'Goat ID, weight and cost price are required' });
   try {
     const { rows } = await pool.query(
-      `INSERT INTO goats (goat_id, breed, weight_kg, photo, cost_price, extra_costs, notes, added_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      `INSERT INTO goats (goat_id, breed, weight_kg, photo, cost_price, extra_costs, notes, added_by, purchase_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [b.goat_id.trim(), b.breed||'', parseFloat(b.weight_kg),
        photoUrl(req.file), parseFloat(b.cost_price), parseFloat(b.extra_costs)||0,
-       b.notes||'', b.added_by||'']
+       b.notes||'', b.added_by||'',
+       b.purchase_date || new Date().toISOString().split('T')[0]]
     );
     res.json({ success: true, id: rows[0].id });
   } catch (e) {
@@ -162,11 +163,13 @@ app.put('/api/goats/:id', (req, res, next) => {
 
     await pool.query(
       `UPDATE goats SET goat_id=$1, breed=$2, weight_kg=$3, photo=$4,
-         cost_price=$5, extra_costs=$6, notes=$7, added_by=$8, updated_at=NOW()
-       WHERE id=$9`,
+         cost_price=$5, extra_costs=$6, notes=$7, added_by=$8,
+         purchase_date=$9, updated_at=NOW()
+       WHERE id=$10`,
       [b.goat_id.trim(), b.breed||'', parseFloat(b.weight_kg), photo,
        parseFloat(b.cost_price), parseFloat(b.extra_costs)||0,
-       b.notes||'', b.added_by||'', req.params.id]
+       b.notes||'', b.added_by||'',
+       b.purchase_date || null, req.params.id]
     );
     res.json({ success: true });
   } catch (e) {

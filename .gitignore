@@ -3,3 +3,5 @@ node_modules/
 goat_ledger.db
 public/uploads/
 *.log
+.vercel
+.env*.local
