@@ -955,7 +955,13 @@ async function sendWhatsApp(id) {
 
   const phone = (g.buyer_phone || '').replace(/\D/g, '');
   const url   = `https://wa.me/${phone ? '91' + phone : ''}?text=${encodeURIComponent(lines)}`;
-  window.open(url, '_blank');
+  // Use location.href so it works in PWA standalone mode (window.open is blocked by OS)
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isPWA) {
+    location.href = url;
+  } else {
+    window.open(url, '_blank');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
