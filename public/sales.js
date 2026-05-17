@@ -261,8 +261,16 @@ async function openDeliverModal(id) {
   const g = await api(`/api/goats/${id}`);
   if (!g) { showToast('Could not load goat details', 'error'); return; }
 
-  const holdStart = g.holding_start_date || g.sale_date;
-  const holdRate  = parseFloat(g.holding_rate || 150);
+  const holdStart   = g.holding_start_date || g.sale_date;
+  const holdRate    = parseFloat(g.holding_rate || 150);
+  const sp          = parseFloat(g.selling_price || 0);
+  const advance     = parseFloat(g.advance_amount || 0);
+  const alreadyPaid = advance; // sale payment collected so far
+  // Estimate palai using agreed rate × today's days (exact will be calculated at delivery)
+  const daysEst     = holdStart ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000)) : 0;
+  const palaiEst    = daysEst * holdRate;
+  const grandEst    = sp + palaiEst;
+  const outstanding = grandEst - alreadyPaid;
 
   document.getElementById('deliverId').value    = id;
   document.getElementById('deliverDate').value  = today();
@@ -274,11 +282,27 @@ async function openDeliverModal(id) {
   document.getElementById('deliverInfoBox').innerHTML = `
     <div class="d-item"><span class="d-lbl">Goat</span><span class="d-val">🐐 ${esc(g.goat_id)}</span></div>
     <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
-    <div class="d-item"><span class="d-lbl">Sale Price</span><span class="d-val">₹${fmt(g.selling_price)}</span></div>
+    <div class="d-item"><span class="d-lbl">Sale Price</span><span class="d-val">₹${fmt(sp)}</span></div>
+    <div class="d-item"><span class="d-lbl">Advance Paid</span><span class="d-val">₹${fmt(advance)}</span></div>
+    <div class="d-item"><span class="d-lbl">Palai Rate</span><span class="d-val">₹${fmt(holdRate)}/day</span></div>
     <div class="d-item"><span class="d-lbl">Holding Since</span><span class="d-val">📅 ${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>`;
 
-  // Store holding start for preview calc
-  document.getElementById('deliverDate').dataset.holdStart = holdStart || '';
+  // Show/hide payment collection section based on outstanding balance
+  const paySection = document.getElementById('deliverPaySection');
+  const collectEl  = document.getElementById('deliverCollectAmt');
+  if (outstanding > 0) {
+    paySection.style.display = '';
+    collectEl.value = Math.round(outstanding);
+    document.getElementById('deliverPaySummary').textContent =
+      `Advance: ₹${fmt(advance)}  ·  Est. Palai: ₹${fmt(palaiEst)}  ·  Outstanding ≈ ₹${fmt(Math.round(outstanding))}`;
+  } else {
+    paySection.style.display = 'none';
+    collectEl.value = '';
+  }
+  // Store data for preview calc
+  document.getElementById('deliverDate').dataset.holdStart  = holdStart || '';
+  document.getElementById('deliverDate').dataset.salePrice  = sp;
+  document.getElementById('deliverDate').dataset.advance    = advance;
   showModal('deliverModal');
   updateDeliverPreview();
 }
@@ -287,15 +311,25 @@ function updateDeliverPreview() {
   const deliverDate = document.getElementById('deliverDate').value;
   const rate        = parseFloat(document.getElementById('deliverRate').value) || 0;
   const holdStart   = document.getElementById('deliverDate').dataset.holdStart;
+  const sp          = parseFloat(document.getElementById('deliverDate').dataset.salePrice) || 0;
+  const advance     = parseFloat(document.getElementById('deliverDate').dataset.advance) || 0;
   const el          = document.getElementById('deliverPreview');
+  const collectEl   = document.getElementById('deliverCollectAmt');
 
   if (deliverDate && holdStart) {
-    const days    = Math.max(0, Math.round((new Date(deliverDate) - new Date(holdStart)) / 86400000));
-    const charges = days * rate;
+    const days         = Math.max(0, Math.round((new Date(deliverDate) - new Date(holdStart)) / 86400000));
+    const palaiCharges = days * rate;
+    const grandTotal   = sp + palaiCharges;
+    const outstanding  = grandTotal - advance;
+
+    if (outstanding > 0 && collectEl) collectEl.value = Math.round(outstanding);
+    const paySection = document.getElementById('deliverPaySection');
+    if (paySection) paySection.style.display = outstanding > 0 ? '' : 'none';
+
     el.textContent = days === 0
-      ? `✅ Delivered same day — no holding charges`
-      : `🏠 Held ${days} day${days > 1 ? 's' : ''} × ₹${fmt(rate)}/day = ₹${fmt(charges)} holding charges`;
-    el.className = `profit-preview ${charges > 0 ? 'neg' : 'pos'}`;
+      ? `✅ Delivered same day — no holding charges  ·  Collect: ₹${fmt(sp - advance)}`
+      : `🏠 Palai: ${days}d × ₹${fmt(rate)} = ₹${fmt(palaiCharges)}  ·  Grand Total: ₹${fmt(grandTotal)}  ·  Collect: ₹${fmt(Math.round(outstanding))}`;
+    el.className = `profit-preview ${palaiCharges > 0 ? 'neg' : 'pos'}`;
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
@@ -309,23 +343,36 @@ async function confirmDelivery(e) {
   const delDate   = document.getElementById('deliverDate').value;
   const rate      = parseFloat(document.getElementById('deliverRate').value);
   const holdStart = document.getElementById('deliverDate').dataset.holdStart;
+  const sp        = parseFloat(document.getElementById('deliverDate').dataset.salePrice) || 0;
+  const advance   = parseFloat(document.getElementById('deliverDate').dataset.advance) || 0;
+  const payMode   = document.getElementById('deliverPayMode')?.value || '';
   errEl.classList.add('hidden');
 
   if (!delDate)   { errEl.textContent = '⚠️ Delivery date is required.'; errEl.classList.remove('hidden'); return; }
   if (delDate > today()) { errEl.textContent = '⚠️ Delivery date cannot be in the future.'; errEl.classList.remove('hidden'); return; }
   if (holdStart && delDate < holdStart) { errEl.textContent = '⚠️ Delivery date cannot be before the holding start date.'; errEl.classList.remove('hidden'); return; }
 
+  const days         = Math.max(0, Math.round((new Date(delDate) - new Date(holdStart)) / 86400000));
+  const palaiCharges = days * (rate || 0);
+  const grandTotal   = sp + palaiCharges;
+  const outstanding  = grandTotal - advance;
+
+  if (outstanding > 0 && !payMode) {
+    errEl.textContent = '⚠️ Please select payment mode for the outstanding amount.';
+    errEl.classList.remove('hidden'); return;
+  }
+
   setLoading('deliverBtn', true);
   try {
     const res  = await fetch(`/api/goats/${id}/deliver`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ delivery_date: delDate, holding_rate: rate })
+      body: JSON.stringify({ delivery_date: delDate, holding_rate: rate, pay_mode: payMode })
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('hidden'); setLoading('deliverBtn', false); return; }
     closeModal('deliverModal');
     const msg = data.holding_charges > 0
-      ? `📦 Goat delivered · Holding charges: ₹${fmt(data.holding_charges)} for ${data.holding_days} day${data.holding_days > 1 ? 's' : ''}`
+      ? `📦 Delivered · Palai: ₹${fmt(data.holding_charges)} (${data.holding_days}d)  ·  Total collected: ₹${fmt(Math.round(grandTotal))}`
       : `📦 Goat delivered — no holding charges`;
     showToast(msg, data.holding_charges > 0 ? 'warning' : 'success', 5000);
     await loadSold();

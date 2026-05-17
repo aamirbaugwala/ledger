@@ -640,25 +640,34 @@ async function openSellModal(id) {
   if (!g) { showToast('Could not load goat details', 'error'); return; }
   if (g.status === 'sold') { showToast('This goat is already sold', 'warning'); return; }
 
-  const totalCost   = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
-  const expWeight   = (parseFloat(g.weight_kg) * 0.95).toFixed(2);
-  const costRatePerKg = parseFloat(g.weight_kg) > 0 ? totalCost / parseFloat(g.weight_kg) : 0;   // cost per kg on buy weight
+  const totalCost     = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
+  const expWeight     = (parseFloat(g.weight_kg) * 0.95).toFixed(2);
+  const costRatePerKg = parseFloat(g.weight_kg) > 0 ? totalCost / parseFloat(g.weight_kg) : 0;
 
-  document.getElementById('sellId').value             = id;
-  document.getElementById('sellDate').value           = today();
-  document.getElementById('sellRatePerKg').value      = '';
-  document.getElementById('sellWeight').value         = expWeight;   // pre-fill with expected weight
-  document.getElementById('sellAdvance').value        = '0';
-  document.getElementById('sellAdvanceMode').value    = '';
-  document.getElementById('sellFinalMode').value      = '';
-  document.getElementById('sellBuyer').value          = g.buyer_name || '';
-  document.getElementById('sellPhone').value          = g.buyer_phone || '';
+  document.getElementById('sellId').value           = id;
+  document.getElementById('sellDate').value         = today();
+  document.getElementById('sellRatePerKg').value    = '';
+  document.getElementById('sellWeight').value       = expWeight;
+  document.getElementById('sellTotalPrice').value   = '';
+  document.getElementById('sellPalaiDays').value    = '0';
+  document.getElementById('sellPalaiRate').value    = '150';
+  document.getElementById('sellPalaiCharges').value = '';
+  document.getElementById('sellGrandTotal').value   = '';
+  document.getElementById('sellAdvance').value      = '0';
+  document.getElementById('sellAdvanceMode').value  = '';
+  document.getElementById('sellFinalMode').value    = '';
+  document.getElementById('sellBuyer').value        = g.buyer_name || '';
+  document.getElementById('sellPhone').value        = g.buyer_phone || '';
+
+  // Reset to Full Payment mode
+  document.getElementById('sellPayTypeFull').checked = true;
+  document.getElementById('sellFullSection').style.display = '';
+  document.getElementById('sellAdvSection').style.display  = 'none';
 
   // Store for calculations
-  document.getElementById('sellRatePerKg').dataset.cost       = totalCost;
-  document.getElementById('sellRatePerKg').dataset.costRate   = costRatePerKg.toFixed(4);
-  document.getElementById('sellRatePerKg').dataset.goatId     = g.goat_id;
-  document.getElementById('sellRatePerKg').dataset.buyWeight  = g.weight_kg;
+  document.getElementById('sellRatePerKg').dataset.cost      = totalCost;
+  document.getElementById('sellRatePerKg').dataset.costRate  = costRatePerKg.toFixed(4);
+  document.getElementById('sellRatePerKg').dataset.goatId    = g.goat_id;
 
   document.getElementById('sellPreview').classList.add('hidden');
   document.getElementById('sellFormErr').classList.add('hidden');
@@ -668,7 +677,7 @@ async function openSellModal(id) {
     <div class="d-item"><span class="d-lbl">Goat ID</span><span class="d-val">${esc(g.goat_id)}</span></div>
     <div class="d-item"><span class="d-lbl">Breed</span><span class="d-val">${esc(g.breed || '—')}</span></div>
     <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
-    <div class="d-item"><span class="d-lbl">Expected Weight</span><span class="d-val" style="color:var(--amber)">${expWeight} kg <small style="font-weight:500">(×95%)</small></span></div>
+    <div class="d-item"><span class="d-lbl">Expected Weight</span><span class="d-val" style="color:var(--amber)">${expWeight} kg <small>(×95%)</small></span></div>
     <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
     <div class="d-item"><span class="d-lbl">Cost Rate/kg</span><span class="d-val" style="color:var(--blue)">₹${fmt(Math.round(costRatePerKg))}</span></div>`;
 
@@ -676,31 +685,48 @@ async function openSellModal(id) {
   setTimeout(() => document.getElementById('sellRatePerKg').focus(), 150);
 }
 
+function updateSellPayType() {
+  const isFull = document.getElementById('sellPayTypeFull').checked;
+  document.getElementById('sellFullSection').style.display = isFull ? '' : 'none';
+  document.getElementById('sellAdvSection').style.display  = isFull ? 'none' : '';
+  if (isFull) document.getElementById('sellAdvance').value = '0';
+  updateSellPreview();
+}
+
 function updateSellPreview() {
   const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
   const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
   const fallback   = parseFloat(document.getElementById('sellRatePerKg').dataset.cost) || 0;
   const actualWt   = parseFloat(document.getElementById('sellWeight').value) || 0;
-  const advance    = parseFloat(document.getElementById('sellAdvance').value) || 0;
+  const palaiDays  = parseInt(document.getElementById('sellPalaiDays').value) || 0;
+  const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 0;
+  const isFull     = document.getElementById('sellPayTypeFull').checked;
+  const advance    = isFull ? 0 : (parseFloat(document.getElementById('sellAdvance').value) || 0);
 
-  // Selling price = rate/kg × sale weight
-  const sp = inputRate > 0 && actualWt > 0 ? inputRate * actualWt : 0;
-  // Effective cost = cost rate × actual weight
+  const sp           = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
+  const palaiCharges = palaiDays > 0 ? palaiDays * palaiRate : 0;
+  const grandTotal   = sp + palaiCharges;
   const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : fallback;
+
+  document.getElementById('sellTotalPrice').value   = sp > 0 ? sp : '';
+  document.getElementById('sellPalaiCharges').value = palaiDays > 0 ? palaiCharges : '';
+  document.getElementById('sellGrandTotal').value   = sp > 0 ? grandTotal : '';
 
   const el = document.getElementById('sellPreview');
   if (sp > 0) {
     const profit    = sp - effectiveCost;
-    const remaining = sp - advance;
     const marginPct = effectiveCost > 0 ? ((profit / effectiveCost) * 100).toFixed(1) : 0;
     const profitTxt = profit >= 0
       ? `✅ Profit: ₹${fmt(Math.round(profit))} (${marginPct}% margin)`
       : `❌ Loss: ₹${fmt(Math.round(Math.abs(profit)))}`;
-    const priceInfo = `  ·  � Total: ₹${fmt(Math.round(sp))} (${actualWt}kg × ₹${fmt(inputRate)}/kg)`;
-    const advTxt = advance > 0 && advance < sp
-      ? `  ·  📥 Advance: ₹${fmt(advance)}  ·  ⏳ Remaining: ₹${fmt(remaining)}`
-      : advance >= sp ? '  ·  ✅ Fully paid' : '';
-    el.textContent = profitTxt + priceInfo + advTxt;
+    const palaiTxt = palaiDays > 0
+      ? `  ·  🏠 Palai: ${palaiDays}d x ₹${fmt(palaiRate)} = ₹${fmt(palaiCharges)}`
+      : `  ·  🏠 Palai: open (charged at delivery)`;
+    const grandTxt = `  ·  Grand Total: ₹${fmt(grandTotal)}`;
+    const advTxt   = !isFull && advance > 0 && advance < sp
+      ? `  ·  Advance: ₹${fmt(advance)}  ·  Remaining: ₹${fmt(sp - advance)}`
+      : '';
+    el.textContent = profitTxt + palaiTxt + grandTxt + advTxt;
     el.className   = `profit-preview ${profit >= 0 ? 'pos' : 'neg'}`;
     el.classList.remove('hidden');
   } else {
@@ -718,32 +744,35 @@ async function confirmSale(e) {
   const cost       = parseFloat(document.getElementById('sellRatePerKg').dataset.cost);
   const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
   const goatId     = document.getElementById('sellRatePerKg').dataset.goatId;
-  const advance    = parseFloat(document.getElementById('sellAdvance').value) || 0;
+  const isFull     = document.getElementById('sellPayTypeFull').checked;
+  const advance    = isFull ? 0 : (parseFloat(document.getElementById('sellAdvance').value) || 0);
   const buyerName  = document.getElementById('sellBuyer').value.trim();
   const buyerPhone = document.getElementById('sellPhone').value.trim();
-  const advMode    = document.getElementById('sellAdvanceMode').value;
-  const finalMode  = document.getElementById('sellFinalMode').value;
+  const advMode    = isFull ? '' : document.getElementById('sellAdvanceMode').value;
+  const finalMode  = isFull ? document.getElementById('sellFinalMode').value : '';
   const saleWeight = document.getElementById('sellWeight').value;
+  const palaiDays  = parseInt(document.getElementById('sellPalaiDays').value) || 0;
+  const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 150;
   const actualWt   = parseFloat(saleWeight) || 0;
   const sp         = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
   const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : cost;
-  const isBooked   = advance > 0 && advance < sp;
+  const isBooked   = !isFull && advance > 0 && advance < sp;
   const showErr    = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
   if (!inputRate || inputRate <= 0) return showErr('⚠️ Rate per kg must be greater than 0.');
-  if (!actualWt || actualWt <= 0)   return showErr('⚠️ Sale weight is required to calculate price.');
-  if (sp > 10000000)   return showErr('⚠️ Selling price seems too high. Please check.');
+  if (!actualWt || actualWt <= 0)   return showErr('⚠️ Sale weight is required.');
+  if (sp > 10000000)   return showErr('⚠️ Selling price seems too high.');
   if (!buyerName)      return showErr('⚠️ Buyer name is required.');
   if (!buyerPhone)     return showErr('⚠️ Buyer phone is required.');
-  if (!/^[0-9+\-\s]{7,15}$/.test(buyerPhone)) return showErr('⚠️ Enter a valid phone number (7–15 digits).');
-  if (advance < 0)     return showErr('⚠️ Advance amount cannot be negative.');
-  if (advance >= sp)   return showErr('⚠️ Advance cannot be equal to or more than the selling price.');
-  if (isBooked && !advMode)    return showErr('⚠️ Please select advance payment mode.');
-  if (!isBooked && !finalMode) return showErr('⚠️ Please select a payment mode.');
+  if (!/^[0-9+\-\s]{7,15}$/.test(buyerPhone)) return showErr('⚠️ Enter a valid phone number.');
+  if (!isFull && advance <= 0) return showErr('⚠️ Enter an advance amount, or switch to Full Payment.');
+  if (!isFull && advance >= sp) return showErr('⚠️ Advance cannot equal or exceed the selling price.');
+  if (!isFull && !advMode) return showErr('⚠️ Please select advance payment mode.');
+  if (isFull && !finalMode) return showErr('⚠️ Please select a payment mode.');
   const saleDate = document.getElementById('sellDate').value;
-  if (!saleDate)        return showErr('⚠️ Sale date is required.');
+  if (!saleDate)          return showErr('⚠️ Sale date is required.');
   if (saleDate > today()) return showErr('⚠️ Sale date cannot be in the future.');
-  if (sp < effectiveCost && !confirm(`⚠️ Selling at a LOSS of ₹${fmt(Math.round(effectiveCost - sp))} (${actualWt}kg × ₹${fmt(inputRate)}/kg = ₹${fmt(sp)}). Are you sure?`)) return;
+  if (sp < effectiveCost && !confirm(`⚠️ Selling at a LOSS of ₹${fmt(Math.round(effectiveCost - sp))}. Are you sure?`)) return;
 
   setLoading('confirmSaleBtn', true);
   try {
@@ -751,16 +780,18 @@ async function confirmSale(e) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selling_price: sp, buyer_name: buyerName, buyer_phone: buyerPhone,
         sale_date: saleDate, sale_weight_kg: saleWeight || null,
-        advance_amount: advance, advance_mode: advMode, final_payment_mode: finalMode })
+        advance_amount: advance, advance_mode: advMode, final_payment_mode: finalMode,
+        palai_days: palaiDays, palai_rate: palaiRate })
     });
     const data = await res.json();
     if (!res.ok) { showErr(data.error); setLoading('confirmSaleBtn', false); return; }
     closeModal('sellModal');
     const profit = sp - effectiveCost;
-    if (data.status === 'booked') {
-      showToast(`${goatId} booked — ₹${fmt(advance)} received, ₹${fmt(sp - advance)} pending`, 'info', 5000);
+    const palaiNote = palaiDays > 0 ? ` · Palai ${palaiDays}d = ₹${fmt(palaiDays * palaiRate)}` : '';
+    if (isBooked) {
+      showToast(`${goatId} booked — ₹${fmt(advance)} received, ₹${fmt(sp - advance)} pending${palaiNote}`, 'info', 5000);
     } else {
-      showToast(profit >= 0 ? `Sold ${goatId} — Profit: ₹${fmt(Math.round(profit))} 🎉` : `Sold ${goatId} — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
+      showToast(profit >= 0 ? `Sold ${goatId} — Profit: ₹${fmt(Math.round(profit))} 🎉${palaiNote}` : `Sold ${goatId} — Loss: ₹${fmt(Math.round(Math.abs(profit)))}${palaiNote}`,
         profit >= 0 ? 'success' : 'warning', 5000);
     }
     await loadStock();
@@ -771,39 +802,108 @@ async function confirmSale(e) {
   }
 }
 
-async function undoSale(id, btn) {
-  if (!confirm('Move this goat back to available stock?')) return;
-  btn.dataset.loading = 'true';
-  const res = await fetch(`/api/goats/${id}/unsell`, { method: 'POST' });
-  delete btn.dataset.loading;
-  if (res.ok) { showToast('Sale reverted — goat back in stock', 'info'); await loadStock(); loadDashboard(); }
-  else         showToast('Failed to revert sale', 'error');
+// ── View Goat Details ────────────────────────────────────────
+async function viewGoat(id) {
+  const g = await api(`/api/goats/${id}`);
+  if (!g) { showToast('Could not load goat', 'error'); return; }
+
+  const cost       = parseFloat(g.cost_price || 0);
+  const extra      = parseFloat(g.extra_costs || 0);
+  const totalCost  = cost + extra;
+  const sp         = parseFloat(g.selling_price || 0);
+  const profit     = sp > 0 ? sp - totalCost : null;
+  const wt         = parseFloat(g.sale_weight_kg || g.weight_kg || 0);
+  const purchDate  = g.purchase_date ? String(g.purchase_date).slice(0,10) : '—';
+  const saleDate   = g.sale_date     ? String(g.sale_date).slice(0,10)     : '—';
+  const isInYard   = g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status);
+  const isDelivered = g.delivery_status === 'delivered';
+  const holdStart  = g.holding_start_date || g.sale_date;
+  const holdDays   = (isInYard && holdStart)
+    ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000))
+    : (isDelivered && holdStart && g.delivery_date)
+    ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
+    : 0;
+  const holdRate   = parseFloat(g.holding_rate || 150);
+  const holdCharges = isDelivered ? parseFloat(g.holding_charges || 0) : holdDays * holdRate;
+
+  const deliverySection = (isInYard || isDelivered) ? `
+    <div class="form-section">📦 Delivery / Palai</div>
+    <div class="view-grid">
+      <div class="d-item"><span class="d-lbl">Status</span><span class="d-val">${isDelivered ? '📦 Delivered' : '🏠 In Yard'}</span></div>
+      <div class="d-item"><span class="d-lbl">Holding Since</span><span class="d-val">${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>
+      <div class="d-item"><span class="d-lbl">Days Held</span><span class="d-val">${holdDays}d</span></div>
+      <div class="d-item"><span class="d-lbl">Rate/day</span><span class="d-val">₹${fmt(holdRate)}</span></div>
+      <div class="d-item"><span class="d-lbl">${isDelivered ? 'Palai Charges' : 'Accruing'}</span><span class="d-val">₹${fmt(holdCharges)}</span></div>
+      ${isDelivered ? `<div class="d-item"><span class="d-lbl">Delivery Date</span><span class="d-val">${g.delivery_date ? String(g.delivery_date).slice(0,10) : '—'}</span></div>` : ''}
+    </div>` : '';
+
+  const saleSection = (g.status === 'sold' || g.status === 'booked') ? `
+    <div class="form-section">💰 Sale Info</div>
+    <div class="view-grid">
+      <div class="d-item"><span class="d-lbl">Selling Price</span><span class="d-val">₹${fmt(sp)}</span></div>
+      ${profit !== null ? `<div class="d-item"><span class="d-lbl">Profit</span><span class="d-val ${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit >= 0 ? '+' : ''}₹${fmt(profit)}</span></div>` : ''}
+      <div class="d-item"><span class="d-lbl">Sale Weight</span><span class="d-val">${g.sale_weight_kg ? g.sale_weight_kg + ' kg' : '—'}</span></div>
+      <div class="d-item"><span class="d-lbl">Sale Date</span><span class="d-val">${saleDate}</span></div>
+      <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
+      <div class="d-item"><span class="d-lbl">Phone</span><span class="d-val">${esc(g.buyer_phone || '—')}</span></div>
+      ${parseFloat(g.advance_amount) > 0 ? `<div class="d-item"><span class="d-lbl">Advance</span><span class="d-val">₹${fmt(g.advance_amount)} (${esc(g.advance_mode || '')})</span></div>` : ''}
+      ${g.final_payment_mode ? `<div class="d-item"><span class="d-lbl">Payment Mode</span><span class="d-val">${esc(g.final_payment_mode)}</span></div>` : ''}
+    </div>` : '';
+
+  document.getElementById('viewTitle').textContent = `🐐 ${g.goat_id}`;
+  document.getElementById('viewContent').innerHTML = `
+    ${g.photo ? `<img src="${g.photo}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:12px" alt="goat" />` : ''}
+    <div class="form-section">🐐 Identity</div>
+    <div class="view-grid">
+      <div class="d-item"><span class="d-lbl">Goat ID</span><span class="d-val">${esc(g.goat_id)}</span></div>
+      <div class="d-item"><span class="d-lbl">Breed</span><span class="d-val">${esc(g.breed || '—')}</span></div>
+      <div class="d-item"><span class="d-lbl">Status</span><span class="d-val">${g.status}</span></div>
+      <div class="d-item"><span class="d-lbl">Purchase Date</span><span class="d-val">${purchDate}</span></div>
+      <div class="d-item"><span class="d-lbl">Added By</span><span class="d-val">${esc(g.added_by || '—')}</span></div>
+    </div>
+    <div class="form-section">⚖️ Weight & Cost</div>
+    <div class="view-grid">
+      <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
+      <div class="d-item"><span class="d-lbl">Cost/kg</span><span class="d-val">₹${fmt(cost / parseFloat(g.weight_kg || 1))}/kg</span></div>
+      <div class="d-item"><span class="d-lbl">Cost Price</span><span class="d-val">₹${fmt(cost)}</span></div>
+      ${extra > 0 ? `<div class="d-item"><span class="d-lbl">Extra Costs</span><span class="d-val">₹${fmt(extra)}</span></div>` : ''}
+      <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
+    </div>
+    ${saleSection}
+    ${deliverySection}
+    ${g.notes ? `<div class="form-section">📝 Notes</div><p style="margin:8px 0 0;color:var(--text-2)">${esc(g.notes)}</p>` : ''}`;
+  showModal('viewModal');
 }
 
-// ── Finalize booked goat ────────────────────────────────────
+// ── Open Finalize Modal (collect remaining payment) ──────────
 async function openFinalizeModal(id) {
   const g = await api(`/api/goats/${id}`);
-  if (!g) { showToast('Could not load goat details', 'error'); return; }
-  const remaining = parseFloat(g.selling_price) - parseFloat(g.advance_amount || 0);
+  if (!g) { showToast('Could not load goat', 'error'); return; }
+
+  const sp      = parseFloat(g.selling_price || 0);
+  const advance = parseFloat(g.advance_amount || 0);
+  const remaining = sp - advance;
+
   document.getElementById('finalizeId').value = id;
   document.getElementById('finalizeFinalMode').value = '';
   document.getElementById('finalizeFormErr').classList.add('hidden');
-  setLoading('finalizeBtn', false);
   document.getElementById('finalizeInfoBox').innerHTML = `
-    <div class="d-item"><span class="d-lbl">Goat</span><span class="d-val">${esc(g.goat_id)}</span></div>
+    <div class="d-item"><span class="d-lbl">Goat</span><span class="d-val">🐐 ${esc(g.goat_id)}</span></div>
     <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
-    <div class="d-item"><span class="d-lbl">Advance Paid</span><span class="d-val">₹${fmt(g.advance_amount)}</span></div>
-    <div class="d-item"><span class="d-lbl">Remaining</span><span class="d-val" style="color:var(--orange);font-weight:800">₹${fmt(remaining)}</span></div>`;
+    <div class="d-item"><span class="d-lbl">Sale Price</span><span class="d-val">₹${fmt(sp)}</span></div>
+    <div class="d-item"><span class="d-lbl">Advance Paid</span><span class="d-val">₹${fmt(advance)}</span></div>
+    <div class="d-item"><span class="d-lbl">Remaining Due</span><span class="d-val" style="color:var(--red);font-size:1.05rem">₹${fmt(remaining)}</span></div>`;
   showModal('finalizeModal');
 }
 
+// ── Finalize Sale (form submit) ──────────────────────────────
 async function finalizeSale(e) {
   e.preventDefault();
-  const id    = document.getElementById('finalizeId').value;
-  const errEl = document.getElementById('finalizeFormErr');
-  const mode  = document.getElementById('finalizeFinalMode').value;
+  const id      = document.getElementById('finalizeId').value;
+  const mode    = document.getElementById('finalizeFinalMode').value;
+  const errEl   = document.getElementById('finalizeFormErr');
   errEl.classList.add('hidden');
-  if (!mode) { errEl.textContent = '⚠️ Please select the final payment mode.'; errEl.classList.remove('hidden'); return; }
+  if (!mode) { errEl.textContent = '⚠️ Please select a payment mode.'; errEl.classList.remove('hidden'); return; }
   setLoading('finalizeBtn', true);
   try {
     const res  = await fetch(`/api/goats/${id}/finalize`, {
@@ -813,88 +913,31 @@ async function finalizeSale(e) {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('hidden'); setLoading('finalizeBtn', false); return; }
     closeModal('finalizeModal');
-    showToast('Payment collected — goat marked as fully sold ✅', 'success');
-    await loadStock(); loadDashboard();
+    showToast('✅ Payment collected — goat fully sold!', 'success', 4000);
+    await loadStock();
+    loadDashboard();
+    if (typeof loadSold === 'function') loadSold();
   } catch (err) {
     errEl.textContent = 'Network error: ' + err.message;
     errEl.classList.remove('hidden'); setLoading('finalizeBtn', false);
   }
 }
 
-async function viewGoat(id) {
-  const g = await api(`/api/goats/${id}`);
-  if (!g) { showToast('Could not load goat details', 'error'); return; }
-  const totalCost = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
-  const saleWt    = g.sale_weight_kg || g.weight_kg;
-  const profit    = (g.status !== 'available') ? parseFloat(g.selling_price) - totalCost : null;
-  const remaining = g.status === 'booked' ? parseFloat(g.selling_price) - parseFloat(g.advance_amount || 0) : 0;
-  const purchDate = g.purchase_date ? String(g.purchase_date).slice(0,10) : '—';
-  const saleDate  = g.sale_date ? String(g.sale_date).slice(0,10) : '—';
-  const daysHeld  = g.purchase_date
-    ? Math.round((new Date(g.sale_date || new Date()) - new Date(g.purchase_date)) / 86400000)
-    : null;
-
-  document.getElementById('viewTitle').textContent = `🐐 ${g.goat_id}`;
-  document.getElementById('viewContent').innerHTML = `
-    ${g.photo ? `<img src="${g.photo}" class="view-photo" />` : ''}
-    <div class="view-grid">
-      <div class="view-item"><span class="view-lbl">Goat ID / Tag</span><span class="view-val">${esc(g.goat_id)}</span></div>
-      <div class="view-item"><span class="view-lbl">Status</span><span class="view-val">${g.status === 'sold' ? '🔴 Sold' : g.status === 'booked' ? '🟡 Booked' : '🟢 Available'}</span></div>
-      <div class="view-item"><span class="view-lbl">Breed</span><span class="view-val">${esc(g.breed || '—')}</span></div>
-      <div class="view-item"><span class="view-lbl">Purchase Date</span><span class="view-val">📅 ${purchDate}</span></div>
-      <div class="view-item"><span class="view-lbl">Buy Weight</span><span class="view-val">${g.weight_kg} kg</span></div>
-      <div class="view-item"><span class="view-lbl">Exp. Sale Weight (×95%)</span><span class="view-val" style="color:var(--amber)">${(parseFloat(g.weight_kg)*0.95).toFixed(1)} kg</span></div>
-      <div class="view-item"><span class="view-lbl">Cost Price</span><span class="view-val">₹${fmt(g.cost_price)}</span></div>
-      <div class="view-item"><span class="view-lbl">Extra Costs</span><span class="view-val">₹${fmt(g.extra_costs || 0)}</span></div>
-      <div class="view-item"><span class="view-lbl">Total Cost</span><span class="view-val" style="font-weight:700">₹${fmt(totalCost)}</span></div>
-      <div class="view-item"><span class="view-lbl">Cost/kg (buy wt)</span><span class="view-val">₹${(totalCost / parseFloat(g.weight_kg)).toFixed(0)}/kg</span></div>
-      ${daysHeld !== null ? `<div class="view-item"><span class="view-lbl">Days Held</span><span class="view-val">${daysHeld} days</span></div>` : ''}
-      <div class="view-item"><span class="view-lbl">Added By</span><span class="view-val">${esc(g.added_by || '—')}</span></div>
-      ${g.status !== 'available' ? `
-        <div class="view-item view-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span class="view-lbl" style="font-weight:700;color:var(--text-1)">── Sale Details ──</span><span class="view-val"></span></div>
-        <div class="view-item"><span class="view-lbl">Selling Price</span><span class="view-val" style="font-weight:700">₹${fmt(g.selling_price)}</span></div>
-        <div class="view-item"><span class="view-lbl">Sale Weight</span><span class="view-val">${saleWt} kg</span></div>
-        <div class="view-item"><span class="view-lbl">Price/kg (sale wt)</span><span class="view-val">₹${parseFloat(saleWt) > 0 ? Math.round(parseFloat(g.selling_price) / parseFloat(saleWt)) : '—'}/kg</span></div>
-        <div class="view-item"><span class="view-lbl">Profit / Loss</span>
-          <span class="view-val" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">
-            ${profit >= 0 ? '▲ +' : '▼ '}₹${fmt(Math.abs(profit))}
-            ${totalCost > 0 ? ` <small>(${((profit/totalCost)*100).toFixed(1)}%)</small>` : ''}
-          </span>
-        </div>
-        <div class="view-item"><span class="view-lbl">Buyer Name</span><span class="view-val">${esc(g.buyer_name || '—')}</span></div>
-        <div class="view-item"><span class="view-lbl">Buyer Phone</span><span class="view-val">${esc(g.buyer_phone || '—')}</span></div>
-        <div class="view-item"><span class="view-lbl">Sale Date</span><span class="view-val">📅 ${saleDate}</span></div>
-        ${parseFloat(g.advance_amount) > 0 ? `
-          <div class="view-item"><span class="view-lbl">Advance Paid</span><span class="view-val">₹${fmt(g.advance_amount)} <span class="pay-badge">${g.advance_mode || ''}</span></span></div>
-          ${g.advance_date ? `<div class="view-item"><span class="view-lbl">Advance Date</span><span class="view-val">📅 ${String(g.advance_date).slice(0,10)}</span></div>` : ''}` : ''}
-        ${g.final_payment_mode ? `<div class="view-item"><span class="view-lbl">Final Payment Mode</span><span class="view-val"><span class="pay-badge">${g.final_payment_mode}</span></span></div>` : ''}
-        ${g.status === 'booked' ? `<div class="view-item view-full"><span class="view-lbl">Remaining Due</span><span class="view-val" style="color:var(--orange);font-weight:800">₹${fmt(remaining)} to collect</span></div>` : ''}
-        ${g.status === 'sold' ? (() => {
-          const isInYard    = g.delivery_status === 'in_yard' || (g.status === 'sold' && !g.delivery_status);
-          const isDelivered = g.delivery_status === 'delivered';
-          const holdStart   = g.holding_start_date || g.sale_date;
-          const holdDays    = isInYard && holdStart
-            ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000))
-            : (isDelivered && holdStart && g.delivery_date)
-            ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
-            : 0;
-          const holdRate    = parseFloat(g.holding_rate || 150);
-          const holdCharges = isDelivered ? parseFloat(g.holding_charges || 0) : holdDays * holdRate;
-          if (isInYard) return `
-            <div class="view-item view-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span class="view-lbl" style="font-weight:700;color:var(--orange)">── Yard Status ──</span><span class="view-val"></span></div>
-            <div class="view-item"><span class="view-lbl">Yard Status</span><span class="view-val" style="color:var(--orange);font-weight:700">🏠 In Yard</span></div>
-            <div class="view-item"><span class="view-lbl">Holding Since</span><span class="view-val">📅 ${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>
-            <div class="view-item"><span class="view-lbl">Days So Far</span><span class="view-val">${holdDays} day${holdDays !== 1 ? 's' : ''}</span></div>
-            <div class="view-item"><span class="view-lbl">Rate</span><span class="view-val">₹${fmt(holdRate)}/day</span></div>
-            <div class="view-item"><span class="view-lbl">Charges Accrued</span><span class="view-val" style="color:var(--orange);font-weight:700">₹${fmt(holdCharges)}</span></div>`;
-          if (isDelivered) return `
-            <div class="view-item view-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><span class="view-lbl" style="font-weight:700;color:var(--green)">── Delivery ──</span><span class="view-val"></span></div>
-            <div class="view-item"><span class="view-lbl">Delivered On</span><span class="view-val">📅 ${g.delivery_date ? String(g.delivery_date).slice(0,10) : '—'}</span></div>
-            ${holdCharges > 0 ? `<div class="view-item"><span class="view-lbl">Holding Charges</span><span class="view-val">₹${fmt(holdCharges)} (${holdDays}d × ₹${fmt(holdRate)}/day)</span></div>` : ''}`;
-          return '';
-        })() : ''}`
-      : ''}
-      <div class="view-item view-full"><span class="view-lbl">Notes</span><span class="view-val">${esc(g.notes || '—')}</span></div>
-    </div>`;
-  showModal('viewModal');
+// ── Undo Sale ────────────────────────────────────────────────
+async function undoSale(id, btn) {
+  if (!confirm('↩ Undo this sale? The goat will return to Available stock.')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const res  = await fetch(`/api/goats/${id}/unsell`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Failed to undo sale', 'error'); if (btn) btn.disabled = false; return; }
+    showToast('↩ Sale undone — goat returned to stock', 'info', 3000);
+    await loadStock();
+    loadDashboard();
+    if (typeof loadSold === 'function') loadSold();
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+    if (btn) btn.disabled = false;
+  }
 }
+

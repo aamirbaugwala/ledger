@@ -192,31 +192,57 @@
       <div class="form-section">Sale Details</div>
       <div class="form-row">
         <div class="form-group"><label>Rate per kg (₹) *</label><input type="number" id="sellRatePerKg" placeholder="e.g. 700" min="1" required oninput="updateSellPreview()" /></div>
-        <div class="form-group"><label>Sale Weight (kg)</label><input type="number" id="sellWeight" placeholder="Current weight" step="0.1" min="0.1" oninput="updateSellPreview()" /></div>
+        <div class="form-group"><label>Sale Weight (kg) *</label><input type="number" id="sellWeight" placeholder="Current weight" step="0.1" min="0.1" required oninput="updateSellPreview()" /></div>
       </div>
       <div class="form-row">
+        <div class="form-group"><label>Total Price (₹)</label><input type="number" id="sellTotalPrice" readonly tabindex="-1" placeholder="Auto-calculated" class="input-readonly" /></div>
         <div class="form-group"><label>Sale Date *</label><input type="date" id="sellDate" required /></div>
-        <div class="form-group"><label>Payment Mode</label>
-          <select id="sellFinalMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
-        </div>
+      </div>
+      <div class="form-section">Palai / Yard Holding <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></div>
+      <div class="form-row">
+        <div class="form-group"><label>Agreed Palai Days <small>(0 = open, charged on delivery)</small></label><input type="number" id="sellPalaiDays" value="0" min="0" oninput="updateSellPreview()" /></div>
+        <div class="form-group"><label>Palai Rate (₹/day)</label><input type="number" id="sellPalaiRate" value="150" min="0" oninput="updateSellPreview()" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Palai Charges (₹)</label><input type="number" id="sellPalaiCharges" readonly tabindex="-1" placeholder="Days × Rate" class="input-readonly" /></div>
+        <div class="form-group"><label>Grand Total (₹)</label><input type="number" id="sellGrandTotal" readonly tabindex="-1" placeholder="Price + Palai" class="input-readonly input-total" /></div>
       </div>
       <div class="form-section">Buyer Info</div>
       <div class="form-row">
-        <div class="form-group"><label>Buyer Name</label><input type="text" id="sellBuyer" placeholder="Buyer's name" /></div>
-        <div class="form-group"><label>Buyer Phone</label><input type="tel" id="sellPhone" placeholder="Phone number" /></div>
+        <div class="form-group"><label>Buyer Name *</label><input type="text" id="sellBuyer" placeholder="Buyer's name" required /></div>
+        <div class="form-group"><label>Buyer Phone *</label><input type="tel" id="sellPhone" placeholder="Phone number" required /></div>
       </div>
-      <div class="form-section">Advance / Booking Amount <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></div>
-      <div class="form-row">
-        <div class="form-group"><label>Advance Amount (₹)</label><input type="number" id="sellAdvance" placeholder="0" min="0" value="0" oninput="updateSellPreview()" /></div>
-        <div class="form-group"><label>Advance Mode</label>
-          <select id="sellAdvanceMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option></select>
+      <div class="form-section">Payment</div>
+      <div class="pay-type-row">
+        <label class="pay-type-option">
+          <input type="radio" name="sellPayType" id="sellPayTypeFull" value="full" checked onchange="updateSellPayType()" />
+          <span>💰 Full Payment Now</span>
+        </label>
+        <label class="pay-type-option">
+          <input type="radio" name="sellPayType" id="sellPayTypeAdv" value="advance" onchange="updateSellPayType()" />
+          <span>📥 Advance / Booking</span>
+        </label>
+      </div>
+      <div id="sellFullSection">
+        <div class="form-row">
+          <div class="form-group"><label>Payment Mode *</label>
+            <select id="sellFinalMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
+          </div>
+        </div>
+      </div>
+      <div id="sellAdvSection" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>Advance Amount (₹) *</label><input type="number" id="sellAdvance" placeholder="0" min="0" value="0" oninput="updateSellPreview()" /></div>
+          <div class="form-group"><label>Advance Mode *</label>
+            <select id="sellAdvanceMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option></select>
+          </div>
         </div>
       </div>
       <div id="sellPreview" class="profit-preview hidden"></div>
       <div id="sellFormErr" class="error-msg hidden"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-gray" onclick="closeModal('sellModal')">Cancel</button>
-        <button type="submit" id="confirmSaleBtn" class="btn btn-primary">✅ Confirm</button>
+        <button type="submit" id="confirmSaleBtn" class="btn btn-primary">✅ Confirm Sale</button>
       </div>
     </form>
   </div></div>
@@ -258,16 +284,20 @@
       <input type="hidden" id="deliverId" />
       <div class="form-section">Delivery Details</div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Delivery Date *</label>
-          <input type="date" id="deliverDate" required oninput="updateDeliverPreview()" />
-        </div>
-        <div class="form-group">
-          <label>Holding Rate (₹/day)</label>
-          <input type="number" id="deliverRate" value="150" min="0" oninput="updateDeliverPreview()" />
-        </div>
+        <div class="form-group"><label>Delivery Date *</label><input type="date" id="deliverDate" required oninput="updateDeliverPreview()" /></div>
+        <div class="form-group"><label>Palai Rate (₹/day)</label><input type="number" id="deliverRate" value="150" min="0" oninput="updateDeliverPreview()" /></div>
       </div>
       <div id="deliverPreview" class="profit-preview hidden"></div>
+      <div id="deliverPaySection" style="display:none">
+        <div class="form-section">Collect Outstanding Payment</div>
+        <div id="deliverPaySummary" class="sell-info-box" style="margin-bottom:10px"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Amount to Collect (₹)</label><input type="number" id="deliverCollectAmt" readonly tabindex="-1" class="input-readonly input-total" /></div>
+          <div class="form-group"><label>Payment Mode *</label>
+            <select id="deliverPayMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
+          </div>
+        </div>
+      </div>
       <div id="deliverFormErr" class="error-msg hidden"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-gray" onclick="closeModal('deliverModal')">Cancel</button>

@@ -181,7 +181,8 @@ app.put('/api/goats/:id', (req, res, next) => {
 // Mark as sold / booked (if advance < full price → booked)
 app.post('/api/goats/:id/sell', async (req, res) => {
   const { selling_price, buyer_name, buyer_phone, sale_date,
-          sale_weight_kg, advance_amount, advance_mode, final_payment_mode } = req.body;
+          sale_weight_kg, advance_amount, advance_mode, final_payment_mode,
+          palai_days, palai_rate } = req.body;
   if (!selling_price || !sale_date)
     return res.status(400).json({ error: 'Selling price and sale date are required' });
   try {
@@ -209,7 +210,7 @@ app.post('/api/goats/:id/sell', async (req, res) => {
        final_payment_mode||'',
        newStatus === 'sold' ? 'in_yard' : null,   // booked → no delivery yet
        newStatus === 'sold' ? sale_date : null,    // holding starts from sale date
-       150,
+       parseFloat(palai_rate) || 150,
        req.params.id]
     );
     res.json({ success: true, status: newStatus });
@@ -220,15 +221,16 @@ app.post('/api/goats/:id/sell', async (req, res) => {
 app.post('/api/goats/:id/finalize', async (req, res) => {
   const { final_payment_mode } = req.body;
   try {
-    const { rows } = await pool.query('SELECT status FROM goats WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT status, holding_rate FROM goats WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
     if (rows[0].status !== 'booked') return res.status(400).json({ error: 'Goat is not in booked state' });
     const today = new Date().toISOString().split('T')[0];
+    const holdRate = parseFloat(rows[0].holding_rate) || 150;
     await pool.query(
       `UPDATE goats SET status='sold', final_payment_mode=$1,
-         delivery_status='in_yard', holding_start_date=$2, holding_rate=150,
-         updated_at=NOW() WHERE id=$3`,
-      [final_payment_mode||'', today, req.params.id]
+         delivery_status='in_yard', holding_start_date=$2, holding_rate=$3,
+         updated_at=NOW() WHERE id=$4`,
+      [final_payment_mode||'', today, holdRate, req.params.id]
     );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
