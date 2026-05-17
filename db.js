@@ -45,6 +45,7 @@ async function initDB() {
     `ALTER TABLE goats ADD COLUMN IF NOT EXISTS holding_rate       NUMERIC  DEFAULT 150`,
     `ALTER TABLE goats ADD COLUMN IF NOT EXISTS holding_charges    NUMERIC  DEFAULT 0`,
     `ALTER TABLE goats ADD COLUMN IF NOT EXISTS delivery_date      DATE`,
+    `ALTER TABLE goats ADD COLUMN IF NOT EXISTS agreed_palai_days  INTEGER  DEFAULT 0`,
   ];
   for (const sql of newCols) await pool.query(sql);
 

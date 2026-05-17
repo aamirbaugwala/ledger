@@ -663,6 +663,8 @@ async function openSellModal(id) {
   document.getElementById('sellPayTypeFull').checked = true;
   document.getElementById('sellFullSection').style.display = '';
   document.getElementById('sellAdvSection').style.display  = 'none';
+  const takeTodayEl = document.getElementById('sellTakeToday');
+  if (takeTodayEl) takeTodayEl.checked = true;
 
   // Store for calculations
   document.getElementById('sellRatePerKg').dataset.cost      = totalCost;
@@ -714,6 +716,7 @@ function updateSellPreview() {
 
   const el = document.getElementById('sellPreview');
   if (sp > 0) {
+    const takeToday  = isFull && (document.getElementById('sellTakeToday')?.checked ?? true);
     const profit    = sp - effectiveCost;
     const marginPct = effectiveCost > 0 ? ((profit / effectiveCost) * 100).toFixed(1) : 0;
     const profitTxt = profit >= 0
@@ -721,12 +724,15 @@ function updateSellPreview() {
       : `❌ Loss: ₹${fmt(Math.round(Math.abs(profit)))}`;
     const palaiTxt = palaiDays > 0
       ? `  ·  🏠 Palai: ${palaiDays}d x ₹${fmt(palaiRate)} = ₹${fmt(palaiCharges)}`
-      : `  ·  🏠 Palai: open (charged at delivery)`;
+      : isFull && !takeToday ? `  ·  🏠 Palai: charged at delivery` : '';
     const grandTxt = `  ·  Grand Total: ₹${fmt(grandTotal)}`;
     const advTxt   = !isFull && advance > 0 && advance < sp
       ? `  ·  Advance: ₹${fmt(advance)}  ·  Remaining: ₹${fmt(sp - advance)}`
       : '';
-    el.textContent = profitTxt + palaiTxt + grandTxt + advTxt;
+    const delivTxt = isFull
+      ? (takeToday ? `  ·  📦 Delivered today` : `  ·  🏠 Staying in yard`)
+      : `  ·  🏠 Booking — keeping in yard`;
+    el.textContent = profitTxt + palaiTxt + grandTxt + advTxt + delivTxt;
     el.className   = `profit-preview ${profit >= 0 ? 'pos' : 'neg'}`;
     el.classList.remove('hidden');
   } else {
@@ -757,6 +763,7 @@ async function confirmSale(e) {
   const sp         = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
   const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : cost;
   const isBooked   = !isFull && advance > 0 && advance < sp;
+  const takeToday  = isFull ? (document.getElementById('sellTakeToday')?.checked ?? true) : false;
   const showErr    = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
   if (!inputRate || inputRate <= 0) return showErr('⚠️ Rate per kg must be greater than 0.');
@@ -781,7 +788,7 @@ async function confirmSale(e) {
       body: JSON.stringify({ selling_price: sp, buyer_name: buyerName, buyer_phone: buyerPhone,
         sale_date: saleDate, sale_weight_kg: saleWeight || null,
         advance_amount: advance, advance_mode: advMode, final_payment_mode: finalMode,
-        palai_days: palaiDays, palai_rate: palaiRate })
+        palai_days: palaiDays, palai_rate: palaiRate, take_today: takeToday })
     });
     const data = await res.json();
     if (!res.ok) { showErr(data.error); setLoading('confirmSaleBtn', false); return; }
@@ -789,9 +796,12 @@ async function confirmSale(e) {
     const profit = sp - effectiveCost;
     const palaiNote = palaiDays > 0 ? ` · Palai ${palaiDays}d = ₹${fmt(palaiDays * palaiRate)}` : '';
     if (isBooked) {
-      showToast(`${goatId} booked — ₹${fmt(advance)} received, ₹${fmt(sp - advance)} pending${palaiNote}`, 'info', 5000);
+      showToast(`🔖 ${goatId} booked — ₹${fmt(advance)} advance, ₹${fmt(sp - advance)} remaining`, 'info', 5000);
+    } else if (takeToday) {
+      showToast(profit >= 0 ? `📦 ${goatId} sold & out — Profit: ₹${fmt(Math.round(profit))} 🎉${palaiNote}` : `📦 ${goatId} sold & out — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
+        profit >= 0 ? 'success' : 'warning', 5000);
     } else {
-      showToast(profit >= 0 ? `Sold ${goatId} — Profit: ₹${fmt(Math.round(profit))} 🎉${palaiNote}` : `Sold ${goatId} — Loss: ₹${fmt(Math.round(Math.abs(profit)))}${palaiNote}`,
+      showToast(profit >= 0 ? `✅ ${goatId} sold, keeping in yard — Profit: ₹${fmt(Math.round(profit))} 🎉` : `✅ ${goatId} sold, in yard — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
         profit >= 0 ? 'success' : 'warning', 5000);
     }
     await loadStock();
@@ -829,10 +839,11 @@ async function viewGoat(id) {
   const deliverySection = (isInYard || isDelivered) ? `
     <div class="form-section">📦 Delivery / Palai</div>
     <div class="view-grid">
-      <div class="d-item"><span class="d-lbl">Status</span><span class="d-val">${isDelivered ? '📦 Delivered' : '🏠 In Yard'}</span></div>
+      <div class="d-item"><span class="d-lbl">Status</span><span class="d-val">${isDelivered ? '📦 Out' : '🏠 In Yard'}</span></div>
+      <div class="d-item"><span class="d-lbl">Agreed Palai Days</span><span class="d-val" style="color:var(--amber)">${parseInt(g.agreed_palai_days) > 0 ? parseInt(g.agreed_palai_days) + 'd' : 'Open'}</span></div>
+      <div class="d-item"><span class="d-lbl">Palai Rate</span><span class="d-val">₹${fmt(holdRate)}/day</span></div>
       <div class="d-item"><span class="d-lbl">Holding Since</span><span class="d-val">${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>
       <div class="d-item"><span class="d-lbl">Days Held</span><span class="d-val">${holdDays}d</span></div>
-      <div class="d-item"><span class="d-lbl">Rate/day</span><span class="d-val">₹${fmt(holdRate)}</span></div>
       <div class="d-item"><span class="d-lbl">${isDelivered ? 'Palai Charges' : 'Accruing'}</span><span class="d-val">₹${fmt(holdCharges)}</span></div>
       ${isDelivered ? `<div class="d-item"><span class="d-lbl">Delivery Date</span><span class="d-val">${g.delivery_date ? String(g.delivery_date).slice(0,10) : '—'}</span></div>` : ''}
     </div>` : '';
@@ -875,45 +886,114 @@ async function viewGoat(id) {
   showModal('viewModal');
 }
 
-// ── Open Finalize Modal (collect remaining payment) ──────────
+// ── Open Finalize Modal (collect remaining + palai → mark as delivered) ──
 async function openFinalizeModal(id) {
   const g = await api(`/api/goats/${id}`);
   if (!g) { showToast('Could not load goat', 'error'); return; }
 
-  const sp      = parseFloat(g.selling_price || 0);
-  const advance = parseFloat(g.advance_amount || 0);
-  const remaining = sp - advance;
+  const isCollectible = g.status === 'booked' ||
+    (g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status));
+  if (!isCollectible) { showToast('This goat is already delivered', 'warning'); return; }
 
-  document.getElementById('finalizeId').value = id;
-  document.getElementById('finalizeFinalMode').value = '';
+  const sp        = parseFloat(g.selling_price || 0);
+  const advance   = parseFloat(g.advance_amount || 0);
+  const remaining = sp - advance;
+  const holdRate  = parseFloat(g.holding_rate || 150);
+  const holdStart = g.holding_start_date || g.sale_date;
+  const agreedDays = parseInt(g.agreed_palai_days || 0);
+
+  document.getElementById('finalizeId').value           = id;
+  document.getElementById('finalizeDeliveryDate').value = today();
+  document.getElementById('finalizeHoldRate').value     = holdRate;
+  document.getElementById('finalizeFinalMode').value    = '';
+  document.getElementById('finalizeTotalAmt').value     = '';
+  document.getElementById('finalizeSummaryBox').style.display = 'none';
   document.getElementById('finalizeFormErr').classList.add('hidden');
+  setLoading('finalizeBtn', false);
+
+  document.getElementById('finalizeDeliveryDate').dataset.holdStart  = holdStart || '';
+  document.getElementById('finalizeDeliveryDate').dataset.salePrice  = sp;
+  document.getElementById('finalizeDeliveryDate').dataset.advance    = advance;
+  document.getElementById('finalizeDeliveryDate').dataset.agreedDays = agreedDays;
+
+  const statusBadge = g.status === 'booked'
+    ? `<span class="st-badge st-inyard-bal">🏠 In Yard · Balance Due</span>`
+    : `<span class="st-badge st-inyard-paid">🏠 In Yard · Paid</span>`;
+
   document.getElementById('finalizeInfoBox').innerHTML = `
     <div class="d-item"><span class="d-lbl">Goat</span><span class="d-val">🐐 ${esc(g.goat_id)}</span></div>
+    <div class="d-item"><span class="d-lbl">Status</span><span class="d-val">${statusBadge}</span></div>
     <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
     <div class="d-item"><span class="d-lbl">Sale Price</span><span class="d-val">₹${fmt(sp)}</span></div>
     <div class="d-item"><span class="d-lbl">Advance Paid</span><span class="d-val">₹${fmt(advance)}</span></div>
-    <div class="d-item"><span class="d-lbl">Remaining Due</span><span class="d-val" style="color:var(--red);font-size:1.05rem">₹${fmt(remaining)}</span></div>`;
+    <div class="d-item"><span class="d-lbl">Balance</span><span class="d-val" style="color:var(--${remaining > 0 ? 'red' : 'green'})">${remaining > 0 ? '₹' + fmt(remaining) + ' due' : '✅ Fully paid'}</span></div>
+    <div class="d-item"><span class="d-lbl">Palai Rate</span><span class="d-val">₹${fmt(holdRate)}/day</span></div>
+    <div class="d-item"><span class="d-lbl">Agreed Palai Days</span><span class="d-val" style="color:${agreedDays > 0 ? 'var(--amber)' : 'var(--text-3)'}">${agreedDays > 0 ? agreedDays + 'd agreed' : 'Open — charged at delivery'}</span></div>
+    <div class="d-item"><span class="d-lbl">In Yard Since</span><span class="d-val">${holdStart ? String(holdStart).slice(0,10) : '—'}</span></div>`;
+
   showModal('finalizeModal');
+  updateFinalizePreview();
+}
+
+function updateFinalizePreview() {
+  const delivDate  = document.getElementById('finalizeDeliveryDate').value;
+  const holdRate   = parseFloat(document.getElementById('finalizeHoldRate').value) || 0;
+  const holdStart  = document.getElementById('finalizeDeliveryDate').dataset.holdStart;
+  const sp         = parseFloat(document.getElementById('finalizeDeliveryDate').dataset.salePrice) || 0;
+  const advance    = parseFloat(document.getElementById('finalizeDeliveryDate').dataset.advance) || 0;
+  const agreedDays = parseInt(document.getElementById('finalizeDeliveryDate').dataset.agreedDays) || 0;
+  const remaining  = sp - advance;
+  const sumEl      = document.getElementById('finalizeSummaryBox');
+  const totalEl    = document.getElementById('finalizeTotalAmt');
+  const modeLabel  = document.getElementById('finalizePayLabel');
+  if (!delivDate) return;
+
+  const actualDays   = holdStart ? Math.max(0, Math.round((new Date(delivDate) - new Date(holdStart)) / 86400000)) : 0;
+  const palaiCharges = actualDays * holdRate;
+  const total        = remaining + palaiCharges;
+
+  totalEl.value = Math.round(total);
+  if (modeLabel) modeLabel.textContent = total > 0 ? 'Payment Mode *' : 'Payment Mode (optional)';
+
+  const agreedNote = agreedDays > 0
+    ? `<div class="d-item"><span class="d-lbl">Agreed Days</span><span class="d-val" style="color:${actualDays > agreedDays ? 'var(--red)' : 'var(--green)'}">${agreedDays}d agreed · ${actualDays}d actual${actualDays > agreedDays ? ` ⚠️ +${actualDays - agreedDays}d over` : ' ✅'}</span></div>`
+    : `<div class="d-item"><span class="d-lbl">Agreed Days</span><span class="d-val" style="color:var(--text-3)">Open (charged at delivery)</span></div>`;
+
+  sumEl.style.display = '';
+  sumEl.innerHTML = `
+    ${agreedNote}
+    <div class="d-item"><span class="d-lbl">Actual Days in Yard</span><span class="d-val">${actualDays}d × ₹${fmt(holdRate)}/day</span></div>
+    <div class="d-item"><span class="d-lbl">Palai Charges</span><span class="d-val" style="color:var(--red)">₹${fmt(palaiCharges)}</span></div>
+    <div class="d-item"><span class="d-lbl">Remaining Balance</span><span class="d-val">₹${fmt(remaining)}</span></div>
+    <div class="d-item" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span class="d-lbl" style="font-weight:700">Total to Collect</span><span class="d-val" style="font-weight:700;font-size:1.1rem;color:var(--${total > 0 ? 'red' : 'green'})">₹${fmt(Math.round(total))}</span></div>`;
 }
 
 // ── Finalize Sale (form submit) ──────────────────────────────
 async function finalizeSale(e) {
   e.preventDefault();
-  const id      = document.getElementById('finalizeId').value;
-  const mode    = document.getElementById('finalizeFinalMode').value;
-  const errEl   = document.getElementById('finalizeFormErr');
+  const id        = document.getElementById('finalizeId').value;
+  const mode      = document.getElementById('finalizeFinalMode').value;
+  const delivDate = document.getElementById('finalizeDeliveryDate').value;
+  const holdRate  = parseFloat(document.getElementById('finalizeHoldRate').value) || 0;
+  const total     = parseFloat(document.getElementById('finalizeTotalAmt').value) || 0;
+  const errEl     = document.getElementById('finalizeFormErr');
   errEl.classList.add('hidden');
-  if (!mode) { errEl.textContent = '⚠️ Please select a payment mode.'; errEl.classList.remove('hidden'); return; }
+
+  if (!delivDate) { errEl.textContent = '⚠️ Delivery date is required.'; errEl.classList.remove('hidden'); return; }
+  if (delivDate > today()) { errEl.textContent = '⚠️ Delivery date cannot be in the future.'; errEl.classList.remove('hidden'); return; }
+  if (total > 0 && !mode) { errEl.textContent = '⚠️ Please select a payment mode.'; errEl.classList.remove('hidden'); return; }
+
   setLoading('finalizeBtn', true);
   try {
-    const res  = await fetch(`/api/goats/${id}/finalize`, {
+    const res = await fetch(`/api/goats/${id}/finalize`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ final_payment_mode: mode })
+      body: JSON.stringify({ final_payment_mode: mode, delivery_date: delivDate, holding_rate: holdRate })
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('hidden'); setLoading('finalizeBtn', false); return; }
     closeModal('finalizeModal');
-    showToast('✅ Payment collected — goat fully sold!', 'success', 4000);
+    const palaiTxt = data.holding_charges > 0 ? ` · Palai ₹${fmt(data.holding_charges)} (${data.holding_days}d)` : '';
+    showToast(`📦 Released! Collected: ₹${fmt(Math.round(total))}${palaiTxt}`, 'success', 5000);
     await loadStock();
     loadDashboard();
     if (typeof loadSold === 'function') loadSold();
@@ -922,6 +1002,7 @@ async function finalizeSale(e) {
     errEl.classList.remove('hidden'); setLoading('finalizeBtn', false);
   }
 }
+
 
 // ── Undo Sale ────────────────────────────────────────────────
 async function undoSale(id, btn) {

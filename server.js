@@ -182,7 +182,7 @@ app.put('/api/goats/:id', (req, res, next) => {
 app.post('/api/goats/:id/sell', async (req, res) => {
   const { selling_price, buyer_name, buyer_phone, sale_date,
           sale_weight_kg, advance_amount, advance_mode, final_payment_mode,
-          palai_days, palai_rate } = req.body;
+          palai_days, palai_rate, take_today } = req.body;
   if (!selling_price || !sale_date)
     return res.status(400).json({ error: 'Selling price and sale date are required' });
   try {
@@ -193,7 +193,13 @@ app.post('/api/goats/:id/sell', async (req, res) => {
     const sp      = parseFloat(selling_price);
     const advance = parseFloat(advance_amount) || 0;
     // If advance paid but less than full price → 'booked', otherwise 'sold'
-    const newStatus = (advance > 0 && advance < sp) ? 'booked' : 'sold';
+    const newStatus  = (advance > 0 && advance < sp) ? 'booked' : 'sold';
+    // take_today: customer takes the goat immediately (full payment only, not booking)
+    const isTakeToday = (newStatus === 'sold') && (take_today === true || take_today === 'true');
+    const delivStatus = newStatus === 'booked' ? null : (isTakeToday ? 'delivered' : 'in_yard');
+    const delivDate   = isTakeToday ? sale_date : null;
+    const holdStart   = (!isTakeToday && newStatus === 'sold') ? sale_date : null;
+    const holdCharges = isTakeToday ? 0 : null;
 
     await pool.query(
       `UPDATE goats SET
@@ -202,37 +208,51 @@ app.post('/api/goats/:id/sell', async (req, res) => {
          advance_amount=$7, advance_mode=$8, advance_date=$9,
          final_payment_mode=$10,
          delivery_status=$11, holding_start_date=$12, holding_rate=$13,
+         delivery_date=$14, holding_charges=$15,
+         agreed_palai_days=$16,
          updated_at=NOW()
-       WHERE id=$14`,
+       WHERE id=$17`,
       [newStatus, sp, buyer_name||'', buyer_phone||'', sale_date,
        parseFloat(sale_weight_kg)||null,
        advance, advance_mode||'', advance > 0 ? sale_date : null,
        final_payment_mode||'',
-       newStatus === 'sold' ? 'in_yard' : null,   // booked → no delivery yet
-       newStatus === 'sold' ? sale_date : null,    // holding starts from sale date
-       parseFloat(palai_rate) || 150,
+       delivStatus, holdStart, parseFloat(palai_rate) || 150,
+       delivDate, holdCharges,
+       parseInt(palai_days) || 0,
        req.params.id]
     );
-    res.json({ success: true, status: newStatus });
+    res.json({ success: true, status: newStatus, delivered: isTakeToday });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Finalize a booked goat (collect remaining payment)
+// Collect remaining payment + palai → mark as delivered
 app.post('/api/goats/:id/finalize', async (req, res) => {
-  const { final_payment_mode } = req.body;
+  const { final_payment_mode, delivery_date, holding_rate } = req.body;
   try {
-    const { rows } = await pool.query('SELECT status, holding_rate FROM goats WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM goats WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
-    if (rows[0].status !== 'booked') return res.status(400).json({ error: 'Goat is not in booked state' });
-    const today = new Date().toISOString().split('T')[0];
-    const holdRate = parseFloat(rows[0].holding_rate) || 150;
+    const g = rows[0];
+    const isCollectible = g.status === 'booked' ||
+      (g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status));
+    if (!isCollectible) return res.status(400).json({ error: 'Goat is already delivered or not in a collectible state' });
+
+    const delivDate  = delivery_date || new Date().toISOString().split('T')[0];
+    const holdStart  = g.holding_start_date || g.sale_date;
+    const rate       = parseFloat(holding_rate) || parseFloat(g.holding_rate) || 150;
+    const days       = holdStart
+      ? Math.max(0, Math.round((new Date(delivDate) - new Date(holdStart)) / 86400000))
+      : 0;
+    const holdCharges = days * rate;
+
     await pool.query(
-      `UPDATE goats SET status='sold', final_payment_mode=$1,
-         delivery_status='in_yard', holding_start_date=$2, holding_rate=$3,
-         updated_at=NOW() WHERE id=$4`,
-      [final_payment_mode||'', today, holdRate, req.params.id]
+      `UPDATE goats SET
+         status='sold', final_payment_mode=$1,
+         delivery_status='delivered', delivery_date=$2,
+         holding_rate=$3, holding_charges=$4,
+         updated_at=NOW() WHERE id=$5`,
+      [final_payment_mode || '', delivDate, rate, holdCharges, req.params.id]
     );
-    res.json({ success: true });
+    res.json({ success: true, holding_days: days, holding_charges: holdCharges });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -245,7 +265,7 @@ app.post('/api/goats/:id/unsell', async (req, res) => {
          advance_amount=0, advance_mode='', advance_date=NULL,
          final_payment_mode='',
          delivery_status=NULL, holding_start_date=NULL, holding_rate=150,
-         holding_charges=0, delivery_date=NULL,
+         holding_charges=0, delivery_date=NULL, agreed_palai_days=0,
          updated_at=NOW() WHERE id=$1`,
       [req.params.id]
     );
@@ -315,26 +335,42 @@ app.get('/api/next-id', async (req, res) => {
 // ══════════════════════════════════════════════════════════
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const [avail, booked, sold, totals, pendingQ, monthly, byBreed, recentActivity, weightDist, payModes, payBreakdown] = await Promise.all([
+    const [avail, booked, sold, totals, pendingQ, inYardStats, monthly, byBreed, recentActivity, weightDist, payModes, payBreakdown] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int cnt, COALESCE(SUM(cost_price+extra_costs),0) inv FROM goats WHERE status='available'`),
       pool.query(`
         SELECT COUNT(*)::int cnt,
-               COALESCE(SUM(advance_amount),0)                              advance_collected,
-               COALESCE(SUM(selling_price - advance_amount),0)             pending_amount
+               COALESCE(SUM(advance_amount),0)::float                        advance_collected,
+               COALESCE(SUM(selling_price - advance_amount),0)::float        balance_due
         FROM goats WHERE status='booked'`),
       pool.query(`SELECT COUNT(*)::int cnt FROM goats WHERE status='sold'`),
       pool.query(`
         SELECT COALESCE(SUM(selling_price),0)                          revenue,
                COALESCE(SUM(cost_price+extra_costs),0)                 cost,
-               COALESCE(SUM(selling_price-(cost_price+extra_costs)),0) profit
+               COALESCE(SUM(selling_price-(cost_price+extra_costs)),0) profit,
+               COALESCE(SUM(CASE WHEN delivery_status='delivered' THEN COALESCE(holding_charges,0) ELSE 0 END),0) total_palai
         FROM goats WHERE status='sold'`),
       pool.query(`
-        SELECT goat_id, buyer_name, buyer_phone,
+        SELECT goat_id, buyer_name, buyer_phone, status, delivery_status,
                selling_price::float, advance_amount::float,
                (selling_price - advance_amount)::float remaining,
-               sale_date
-        FROM goats WHERE status='booked'
+               sale_date, holding_start_date, holding_rate::float,
+               COALESCE(agreed_palai_days, 0)::int                                                                    agreed_palai_days,
+               GREATEST(0, COALESCE(CURRENT_DATE - holding_start_date::date, 0))::int         hold_days,
+               GREATEST(0, COALESCE((CURRENT_DATE - holding_start_date::date) * holding_rate::numeric, 0))::float  palai_accruing
+        FROM goats
+        WHERE status='booked'
+           OR (status='sold' AND (delivery_status='in_yard' OR delivery_status IS NULL))
         ORDER BY sale_date DESC`),
+      pool.query(`
+        SELECT
+          COUNT(*)::int                                                        in_yard_total,
+          SUM(CASE WHEN status='booked' THEN 1 ELSE 0 END)::int               balance_count,
+          SUM(CASE WHEN status='sold'   THEN 1 ELSE 0 END)::int               paid_count,
+          COALESCE(SUM(CASE WHEN status='booked' THEN selling_price - advance_amount ELSE 0 END),0)::float  balance_due,
+          COALESCE(SUM(GREATEST(0, COALESCE(CURRENT_DATE - holding_start_date::date, 0)) * holding_rate::numeric),0)::float  palai_accruing
+        FROM goats
+        WHERE status='booked'
+           OR (status='sold' AND (delivery_status='in_yard' OR delivery_status IS NULL))`),
       pool.query(`
         SELECT TO_CHAR(sale_date,'YYYY-MM') mon,
                COUNT(*)::int cnt,
@@ -391,12 +427,21 @@ app.get('/api/dashboard', async (req, res) => {
       stockValue:        parseFloat(avail.rows[0].inv),
       bookedCount:       booked.rows[0].cnt,
       advanceCollected:  parseFloat(booked.rows[0].advance_collected),
-      pendingAmount:     parseFloat(booked.rows[0].pending_amount),
-      pendingGoats:      pendingQ.rows,
+      pendingAmount:     parseFloat(booked.rows[0].balance_due),   // kept for compat
+      // New unified in-yard stats
+      inYardTotal:       inYardStats.rows[0].in_yard_total,
+      inYardBalanceCount: inYardStats.rows[0].balance_count,
+      inYardPaidCount:   inYardStats.rows[0].paid_count,
+      balanceDue:        parseFloat(inYardStats.rows[0].balance_due),
+      palaiAccruing:     parseFloat(inYardStats.rows[0].palai_accruing),
+      outstandingTotal:  parseFloat(inYardStats.rows[0].balance_due) + parseFloat(inYardStats.rows[0].palai_accruing),
+      inYardGoats:       pendingQ.rows,
+      pendingGoats:      pendingQ.rows,   // kept for compat
       soldCount:         sold.rows[0].cnt,
       totalRevenue:      parseFloat(totals.rows[0].revenue),
       totalCost:         parseFloat(totals.rows[0].cost),
       totalProfit:       parseFloat(totals.rows[0].profit),
+      totalPalaiCollected: parseFloat(totals.rows[0].total_palai),
       monthly:           monthly.rows,
       byBreed:           byBreed.rows,
       recentActivity:    recentActivity.rows,
