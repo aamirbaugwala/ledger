@@ -307,12 +307,17 @@ app.post('/api/recalculate-costs', async (req, res) => {
     const hkb       = parseFloat(req.body.hkb)       || 0;
     const other     = parseFloat(req.body.other)      || 0;
     const mode      = req.body.mode === 'replace' ? 'replace' : 'add';
+    const breed     = (req.body.breed || '').trim();
     const incoming  = transport + hkb + other;
 
-    const { rows } = await pool.query('SELECT id, weight_kg, extra_costs FROM goats');
-    const totalWt   = rows.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
+    // Fetch only the target group (by breed if specified, else all)
+    const { rows } = breed
+      ? await pool.query('SELECT id, weight_kg, extra_costs FROM goats WHERE breed = $1', [breed])
+      : await pool.query('SELECT id, weight_kg, extra_costs FROM goats');
 
-    // In add mode: figure out new grand total = existing sum + incoming
+    if (!rows.length) return res.status(400).json({ error: 'No goats found for the selected breed.' });
+
+    const totalWt       = rows.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
     const existingTotal = rows.reduce((s, g) => s + parseFloat(g.extra_costs || 0), 0);
     const newGrandTotal = mode === 'add' ? existingTotal + incoming : incoming;
 

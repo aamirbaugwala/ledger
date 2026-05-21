@@ -340,7 +340,7 @@ function renderStockCards(goats) {
       </div>` : '';
 
     const actions = isBooked
-      ? `<button class="btn btn-primary btn-sm" onclick="openFinalizeModal(${g.id})">💳 Collect ₹${fmt(remaining)}</button>
+      ? `<button class="btn btn-primary btn-sm" onclick="quickOut(${g.id})">� Out</button>
          <button class="btn btn-wa     btn-sm" onclick="sendWhatsApp(${g.id})">📱</button>
          <button class="btn btn-gray   btn-sm" onclick="undoSale(${g.id}, this)">↩</button>
          <button class="btn btn-gray   btn-sm" onclick="viewGoat(${g.id})">👁</button>`
@@ -436,7 +436,7 @@ function goatCard(g, isSold) {
 
   const saleDetails = showSale ? `
     <div class="d-item"><span class="d-lbl">Sold For</span><span class="d-val">₹${fmt(g.selling_price)}</span></div>
-    <div class="d-item"><span class="d-lbl">Sale Wt</span><span class="d-val">${saleWt} kg</span></div>
+    <div class="d-item"><span class="d-lbl">Sale Wt</span><span class="d-val">${saleWt} kg${saleWt > 0 ? ` <span style="color:var(--blue);font-weight:600">(₹${fmt(Math.round(parseFloat(g.selling_price)/parseFloat(saleWt)))}/kg)</span>` : ''}</span></div>
     ${g.buyer_name ? `<div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name)}</span></div>` : ''}
     ${parseFloat(g.advance_amount) > 0 ? `<div class="d-item"><span class="d-lbl">Advance</span><span class="d-val">₹${fmt(g.advance_amount)} <span class="pay-badge">${g.advance_mode||'—'}</span></span></div>` : ''}
     ${g.final_payment_mode ? `<div class="d-item"><span class="d-lbl">Payment</span><span class="d-val"><span class="pay-badge">${g.final_payment_mode}</span></span></div>` : ''}
@@ -454,7 +454,7 @@ function goatCard(g, isSold) {
        <button class="btn btn-gray   btn-sm" onclick="viewGoat(${g.id})">👁</button>
        <button class="btn btn-danger btn-sm" onclick="deleteGoat(${g.id}, 'sold')">🗑</button>`
     : isBooked
-    ? `<button class="btn btn-primary btn-sm" onclick="openFinalizeModal(${g.id})">💳 Collect ₹${fmt(remaining)}</button>
+    ? `<button class="btn btn-primary btn-sm" onclick="quickOut(${g.id})">� Out</button>
        <button class="btn btn-wa     btn-sm" onclick="sendWhatsApp(${g.id})">📱 WA</button>
        <button class="btn btn-gray   btn-sm" onclick="undoSale(${g.id}, this)">↩</button>
        <button class="btn btn-gray   btn-sm" onclick="viewGoat(${g.id})">👁</button>`
@@ -811,6 +811,7 @@ async function viewGoat(id) {
   const extra      = parseFloat(g.extra_costs || 0);
   const totalCost  = cost + extra;
   const sp         = parseFloat(g.selling_price || 0);
+  const sr         = parseFloat(g.selling_price/g.sale_weight_kg || 0);
   const profit     = sp > 0 ? sp - totalCost : null;
   const wt         = parseFloat(g.sale_weight_kg || g.weight_kg || 0);
   const purchDate  = g.purchase_date ? String(g.purchase_date).slice(0,10) : '—';
@@ -846,6 +847,7 @@ async function viewGoat(id) {
       <div class="d-item"><span class="d-lbl">Selling Price</span><span class="d-val">₹${fmt(sp)}</span></div>
       ${profit !== null ? `<div class="d-item"><span class="d-lbl">Profit</span><span class="d-val ${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit >= 0 ? '+' : ''}₹${fmt(profit)}</span></div>` : ''}
       <div class="d-item"><span class="d-lbl">Sale Weight</span><span class="d-val">${g.sale_weight_kg ? g.sale_weight_kg + ' kg' : '—'}</span></div>
+      <div class="d-item"><span class="d-lbl">Sale Rate</span><span class="d-val" style="color:var(--blue);font-weight:600">${g.sale_weight_kg && sp > 0 ? '₹' + fmt(Math.round(sp / parseFloat(g.sale_weight_kg))) + '/kg' : '—'}</span></div>
       <div class="d-item"><span class="d-lbl">Sale Date</span><span class="d-val">${saleDate}</span></div>
       <div class="d-item"><span class="d-lbl">Buyer</span><span class="d-val">${esc(g.buyer_name || '—')}</span></div>
       <div class="d-item"><span class="d-lbl">Phone</span><span class="d-val">${esc(g.buyer_phone || '—')}</span></div>

@@ -38,8 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('goatForm').addEventListener('submit',     saveGoat);
   document.getElementById('sellForm').addEventListener('submit',     confirmSale);
-  document.getElementById('finalizeForm').addEventListener('submit', finalizeSale);
-  document.getElementById('deliverForm').addEventListener('submit',  confirmDelivery);
 
   ['fWeight','fCost','fExtra'].forEach(id =>
     document.getElementById(id).addEventListener('input', calcAuto)

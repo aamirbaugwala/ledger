@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════
 
 // ── Update Shared Costs ─────────────────────────────────────
+let _rcAllGoats = [];
+
 async function openRecalcCostsModal() {
   document.getElementById('rcTransport').value = '';
   document.getElementById('rcHKB').value       = '';
@@ -17,16 +19,40 @@ async function openRecalcCostsModal() {
   const addRadio = document.querySelector('input[name="rcMode"][value="add"]');
   if (addRadio) addRadio.checked = true;
 
-  // Then load current totals from all goats
-  const all = await api('/api/goats') || [];
-  const currentTotal = all.reduce((s, g) => s + parseFloat(g.extra_costs || 0), 0);
-  const totalWt      = all.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
-  const avgPerGoat   = all.length ? Math.round(currentTotal / all.length) : 0;
-  document.getElementById('recalcCurrentInfo').dataset.currentTotal = currentTotal;
+  // Load all goats
+  _rcAllGoats = await api('/api/goats') || [];
 
+  // Populate breed dropdown
+  const breeds = [...new Set(_rcAllGoats.map(g => (g.breed || '').trim()).filter(Boolean))].sort();
+  const sel = document.getElementById('rcBreedFilter');
+  sel.innerHTML = `<option value="">All goats (${_rcAllGoats.length})</option>` +
+    breeds.map(b => {
+      const count = _rcAllGoats.filter(g => g.breed === b).length;
+      return `<option value="${esc(b)}">${esc(b)} (${count})</option>`;
+    }).join('');
+
+  _rcUpdateInfo();
+}
+
+function _rcUpdateInfo() {
+  const breed    = document.getElementById('rcBreedFilter')?.value || '';
+  const filtered = breed ? _rcAllGoats.filter(g => g.breed === breed) : _rcAllGoats;
+  const currentTotal = filtered.reduce((s, g) => s + parseFloat(g.extra_costs || 0), 0);
+  const totalWt      = filtered.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
+  const avgPerGoat   = filtered.length ? Math.round(currentTotal / filtered.length) : 0;
+
+  document.getElementById('recalcCurrentInfo').dataset.currentTotal = currentTotal;
+  document.getElementById('recalcCurrentInfo').dataset.totalWt      = totalWt;
   document.getElementById('recalcCurrentInfo').innerHTML =
-    `<strong>${all.length} goats</strong> · Total buy wt: <strong>${totalWt.toFixed(1)} kg</strong><br>
+    `<strong>${filtered.length} goats${breed ? ` (${esc(breed)})` : ''}</strong> · Total buy wt: <strong>${totalWt.toFixed(1)} kg</strong><br>
      Current total extra costs: <strong>₹${fmt(Math.round(currentTotal))}</strong> · Avg per goat: <strong>₹${fmt(avgPerGoat)}</strong>`;
+
+  const hint = document.getElementById('rcBreedHint');
+  if (hint) hint.textContent = breed
+    ? `⚠️ Costs will only be distributed among ${filtered.length} ${esc(breed)} goats — other breeds untouched.`
+    : `Costs will be distributed across all ${filtered.length} goats.`;
+
+  recalcPreview();
 }
 
 function recalcPreview() {
@@ -37,6 +63,7 @@ function recalcPreview() {
   const box     = document.getElementById('recalcPreviewBox');
   const mode    = document.querySelector('input[name="rcMode"]:checked')?.value || 'add';
   const currentTotal = parseFloat(document.getElementById('recalcCurrentInfo').dataset.currentTotal || 0);
+  const breed   = document.getElementById('rcBreedFilter')?.value || '';
 
   if (entered <= 0) { box.classList.add('hidden'); return; }
 
@@ -44,14 +71,15 @@ function recalcPreview() {
   const modeLabel = mode === 'add'
     ? `➕ Adding ₹${fmt(entered)} on top of existing ₹${fmt(Math.round(currentTotal))}`
     : `🔄 Replacing existing ₹${fmt(Math.round(currentTotal))} entirely`;
+  const breedLabel = breed ? ` for <strong>${esc(breed)}</strong> goats only` : ` across all goats`;
 
   box.classList.remove('hidden');
   box.innerHTML =
-    `<strong>New total extra costs will be: ₹${fmt(Math.round(newTotal))}</strong>
+    `<strong>New total extra costs will be: ₹${fmt(Math.round(newTotal))}</strong>${breedLabel}
      <span style="margin-left:10px;color:var(--text-3);font-size:0.78rem">${modeLabel}</span><br>
      <span style="color:var(--text-2);font-size:0.78rem;margin-top:4px;display:block">
        🚚 Transport ₹${fmt(t)} &nbsp;+&nbsp; 🤝 HKB ₹${fmt(h)} &nbsp;+&nbsp; 📦 Other ₹${fmt(o)}
-       — split proportionally by buy weight across all goats.
+       — split proportionally by buy weight.
      </span>`;
 }
 
@@ -60,6 +88,7 @@ async function confirmRecalcCosts() {
   const h = parseFloat(document.getElementById('rcHKB').value)       || 0;
   const o = parseFloat(document.getElementById('rcOther').value)     || 0;
   const mode    = document.querySelector('input[name="rcMode"]:checked')?.value || 'add';
+  const breed   = document.getElementById('rcBreedFilter')?.value || '';
   const errEl   = document.getElementById('recalcErr');
   errEl.classList.add('hidden');
 
@@ -71,8 +100,9 @@ async function confirmRecalcCosts() {
 
   const currentTotal = parseFloat(document.getElementById('recalcCurrentInfo').dataset.currentTotal || 0);
   const newTotal     = mode === 'add' ? currentTotal + (t + h + o) : (t + h + o);
+  const breedText    = breed ? ` for ${breed} goats only` : ` across all goats`;
   const modeText     = mode === 'add' ? `add ₹${fmt(t+h+o)} to existing` : `replace with ₹${fmt(t+h+o)}`;
-  if (!confirm(`${mode === 'add' ? '➕' : '🔄'} ${modeText} — new total will be ₹${fmt(Math.round(newTotal))} across all goats. Proceed?`)) return;
+  if (!confirm(`${mode === 'add' ? '➕' : '🔄'} ${modeText}${breedText} — new total will be ₹${fmt(Math.round(newTotal))}. Proceed?`)) return;
 
   const btn = document.getElementById('recalcSaveBtn');
   btn.dataset.loading = 'true';
@@ -80,7 +110,7 @@ async function confirmRecalcCosts() {
 
   const res  = await fetch('/api/recalculate-costs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transport: t, hkb: h, other: o, mode })
+    body: JSON.stringify({ transport: t, hkb: h, other: o, mode, breed })
   });
   const data = await res.json();
 
@@ -94,7 +124,8 @@ async function confirmRecalcCosts() {
   }
 
   closeModal('recalcCostsModal');
-  showToast(`✅ Extra costs updated for ${data.updated} goats · New total: ₹${fmt(Math.round(data.newTotal))}`, 'success', 5000);
+  const breedMsg = breed ? ` (${breed} only)` : '';
+  showToast(`✅ Extra costs updated for ${data.updated} goats${breedMsg} · New total: ₹${fmt(Math.round(data.newTotal))}`, 'success', 5000);
   await loadStock();
   loadDashboard();
 }

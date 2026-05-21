@@ -419,7 +419,16 @@
       <h2>🔄 Update Shared Costs</h2>
       <button class="modal-close" onclick="closeModal('recalcCostsModal')">✕</button>
     </div>
-    <p class="bulk-hint">Enter costs to update <strong>extra costs</strong> for all goats, redistributed proportionally by buy weight.</p>
+    <p class="bulk-hint">Enter costs to update <strong>extra costs</strong>, redistributed proportionally by buy weight within the selected group.</p>
+
+    <!-- Breed filter -->
+    <div class="form-group" style="margin-bottom:12px">
+      <label>🐐 Apply to which goats?</label>
+      <select id="rcBreedFilter" onchange="_rcUpdateInfo()">
+        <option value="">All goats</option>
+      </select>
+      <div id="rcBreedHint" style="font-size:0.75rem;color:var(--text-3);margin-top:4px"></div>
+    </div>
 
     <div id="recalcCurrentInfo" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--text-2)">
       Loading current totals…
@@ -460,7 +469,7 @@
 
     <div class="modal-actions">
       <button class="btn btn-gray" onclick="closeModal('recalcCostsModal')">Cancel</button>
-      <button class="btn btn-primary" id="recalcSaveBtn" onclick="confirmRecalcCosts()">✅ Apply to All Goats</button>
+      <button class="btn btn-primary" id="recalcSaveBtn" onclick="confirmRecalcCosts()">✅ Apply Costs</button>
     </div>
   </div></div>
 </div>
