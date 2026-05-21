@@ -2,6 +2,103 @@
 //  tools.js — Bulk Add, Market Rate Calc, WhatsApp Receipt
 // ═══════════════════════════════════════════════════════════
 
+// ── Update Shared Costs ─────────────────────────────────────
+async function openRecalcCostsModal() {
+  document.getElementById('rcTransport').value = '';
+  document.getElementById('rcHKB').value       = '';
+  document.getElementById('rcOther').value     = '';
+  document.getElementById('recalcPreviewBox').classList.add('hidden');
+  document.getElementById('recalcErr').classList.add('hidden');
+  document.getElementById('recalcCurrentInfo').textContent = 'Loading current totals…';
+
+  // Open modal immediately — don't wait for API
+  showModal('recalcCostsModal');
+  // reset mode to default
+  const addRadio = document.querySelector('input[name="rcMode"][value="add"]');
+  if (addRadio) addRadio.checked = true;
+
+  // Then load current totals from all goats
+  const all = await api('/api/goats') || [];
+  const currentTotal = all.reduce((s, g) => s + parseFloat(g.extra_costs || 0), 0);
+  const totalWt      = all.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
+  const avgPerGoat   = all.length ? Math.round(currentTotal / all.length) : 0;
+  document.getElementById('recalcCurrentInfo').dataset.currentTotal = currentTotal;
+
+  document.getElementById('recalcCurrentInfo').innerHTML =
+    `<strong>${all.length} goats</strong> · Total buy wt: <strong>${totalWt.toFixed(1)} kg</strong><br>
+     Current total extra costs: <strong>₹${fmt(Math.round(currentTotal))}</strong> · Avg per goat: <strong>₹${fmt(avgPerGoat)}</strong>`;
+}
+
+function recalcPreview() {
+  const t = parseFloat(document.getElementById('rcTransport').value) || 0;
+  const h = parseFloat(document.getElementById('rcHKB').value)       || 0;
+  const o = parseFloat(document.getElementById('rcOther').value)     || 0;
+  const entered = t + h + o;
+  const box     = document.getElementById('recalcPreviewBox');
+  const mode    = document.querySelector('input[name="rcMode"]:checked')?.value || 'add';
+  const currentTotal = parseFloat(document.getElementById('recalcCurrentInfo').dataset.currentTotal || 0);
+
+  if (entered <= 0) { box.classList.add('hidden'); return; }
+
+  const newTotal  = mode === 'add' ? currentTotal + entered : entered;
+  const modeLabel = mode === 'add'
+    ? `➕ Adding ₹${fmt(entered)} on top of existing ₹${fmt(Math.round(currentTotal))}`
+    : `🔄 Replacing existing ₹${fmt(Math.round(currentTotal))} entirely`;
+
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<strong>New total extra costs will be: ₹${fmt(Math.round(newTotal))}</strong>
+     <span style="margin-left:10px;color:var(--text-3);font-size:0.78rem">${modeLabel}</span><br>
+     <span style="color:var(--text-2);font-size:0.78rem;margin-top:4px;display:block">
+       🚚 Transport ₹${fmt(t)} &nbsp;+&nbsp; 🤝 HKB ₹${fmt(h)} &nbsp;+&nbsp; 📦 Other ₹${fmt(o)}
+       — split proportionally by buy weight across all goats.
+     </span>`;
+}
+
+async function confirmRecalcCosts() {
+  const t = parseFloat(document.getElementById('rcTransport').value) || 0;
+  const h = parseFloat(document.getElementById('rcHKB').value)       || 0;
+  const o = parseFloat(document.getElementById('rcOther').value)     || 0;
+  const mode    = document.querySelector('input[name="rcMode"]:checked')?.value || 'add';
+  const errEl   = document.getElementById('recalcErr');
+  errEl.classList.add('hidden');
+
+  if (t + h + o <= 0) {
+    errEl.textContent = '⚠️ Enter at least one cost greater than 0.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const currentTotal = parseFloat(document.getElementById('recalcCurrentInfo').dataset.currentTotal || 0);
+  const newTotal     = mode === 'add' ? currentTotal + (t + h + o) : (t + h + o);
+  const modeText     = mode === 'add' ? `add ₹${fmt(t+h+o)} to existing` : `replace with ₹${fmt(t+h+o)}`;
+  if (!confirm(`${mode === 'add' ? '➕' : '🔄'} ${modeText} — new total will be ₹${fmt(Math.round(newTotal))} across all goats. Proceed?`)) return;
+
+  const btn = document.getElementById('recalcSaveBtn');
+  btn.dataset.loading = 'true';
+  btn.disabled = true;
+
+  const res  = await fetch('/api/recalculate-costs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transport: t, hkb: h, other: o, mode })
+  });
+  const data = await res.json();
+
+  delete btn.dataset.loading;
+  btn.disabled = false;
+
+  if (!res.ok) {
+    errEl.textContent = '⚠️ ' + (data.error || 'Failed to update costs.');
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  closeModal('recalcCostsModal');
+  showToast(`✅ Extra costs updated for ${data.updated} goats · New total: ₹${fmt(Math.round(data.newTotal))}`, 'success', 5000);
+  await loadStock();
+  loadDashboard();
+}
+
 // ── WhatsApp Receipt ────────────────────────────────────────
 async function sendWhatsApp(id) {
   const g = await api(`/api/goats/${id}`);
@@ -315,11 +412,11 @@ function refreshImportPreview() {
     const expWt        = r.origWt * (r.pct / 100);
     const weightLoss   = r.origWt - expWt;
     const baseCost     = r.origWt * r.rate;           // Amount (original wt × rate)
-    const wtLossCost   = weightLoss * r.rate;         // Weight loss cost
+    const wtLossCost   = weightLoss * r.rate;         // informational only — not included in cost
     const transShare   = totalWt > 0 ? (r.origWt / totalWt) * totTrans : 0;
     const hkbShare     = totalWt > 0 ? (r.origWt / totalWt) * totHKB   : 0;
     const otherShare   = totalWt > 0 ? (r.origWt / totalWt) * totOther : 0;
-    const totalCost    = baseCost + wtLossCost + transShare + hkbShare + otherShare;
+    const totalCost    = baseCost + transShare + hkbShare + otherShare;
     const ratePerKg    = expWt > 0 ? totalCost / expWt : 0;   // cost per kg on expected weight
     const goatId       = prefix + String(startNum + i).padStart(3, '0');
     grandTotal += totalCost;
@@ -335,7 +432,7 @@ function refreshImportPreview() {
       <td style="white-space:nowrap">${r.origWt} kg</td>
       <td style="white-space:nowrap;color:var(--amber)">${r.expWt.toFixed(1)} kg <small>(${r.pct}%)</small></td>
       <td style="white-space:nowrap">₹${r.rate}</td>
-      <td style="white-space:nowrap">₹${fmt(Math.round(r.baseCost + r.wtLossCost))}</td>
+      <td style="white-space:nowrap">₹${fmt(Math.round(r.baseCost))}</td>
       <td style="white-space:nowrap;color:var(--text-3)">₹${fmt(Math.round(r.transShare + r.hkbShare + r.otherShare))}</td>
       <td style="white-space:nowrap;font-weight:700;color:var(--green-deeper)">₹${fmt(Math.round(r.totalCost))}</td>
       <td style="white-space:nowrap;color:var(--blue)">₹${fmt(Math.round(r.ratePerKg))}/kg</td>
@@ -352,7 +449,7 @@ function refreshImportPreview() {
       <table class="bulk-table">
         <thead><tr>
           <th>Goat ID</th><th>Buy Wt</th><th>Exp. Wt</th><th>Rate/kg</th>
-          <th>Base+WtLoss</th><th>Shared Costs</th><th>Total Cost</th><th>₹/kg (exp)</th>
+          <th>Cost Price</th><th>Shared Costs</th><th>Total Cost</th><th>₹/kg (exp)</th>
         </tr></thead>
         <tbody>${rows_html}</tbody>
       </table>
@@ -391,7 +488,7 @@ async function confirmImport() {
     fd.append('goat_id',       r.goatId.trim());
     fd.append('breed',         r.breed || breed);
     fd.append('weight_kg',     r.origWt);
-    fd.append('cost_price',    Math.round(r.baseCost + r.wtLossCost));  // base weight-based cost
+    fd.append('cost_price',    Math.round(r.baseCost));  // base weight-based cost (origWt × rate)
     fd.append('extra_costs',   Math.round(r.transShare + r.hkbShare + r.otherShare));  // shared costs
     fd.append('purchase_date', purchDate);
     fd.append('added_by',      addedBy);

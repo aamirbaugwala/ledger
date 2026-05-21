@@ -300,6 +300,30 @@ app.post('/api/goats/:id/deliver', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Recalculate shared extra_costs for all goats ──────────
+app.post('/api/recalculate-costs', async (req, res) => {
+  try {
+    const transport = parseFloat(req.body.transport) || 0;
+    const hkb       = parseFloat(req.body.hkb)       || 0;
+    const other     = parseFloat(req.body.other)      || 0;
+    const mode      = req.body.mode === 'replace' ? 'replace' : 'add';
+    const incoming  = transport + hkb + other;
+
+    const { rows } = await pool.query('SELECT id, weight_kg, extra_costs FROM goats');
+    const totalWt   = rows.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
+
+    // In add mode: figure out new grand total = existing sum + incoming
+    const existingTotal = rows.reduce((s, g) => s + parseFloat(g.extra_costs || 0), 0);
+    const newGrandTotal = mode === 'add' ? existingTotal + incoming : incoming;
+
+    for (const g of rows) {
+      const share = totalWt > 0 ? (parseFloat(g.weight_kg) / totalWt) * newGrandTotal : 0;
+      await pool.query('UPDATE goats SET extra_costs = $1 WHERE id = $2', [Math.round(share), g.id]);
+    }
+    res.json({ success: true, updated: rows.length, totalWt: totalWt.toFixed(1), newTotal: newGrandTotal });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.delete('/api/goats/:id', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT photo FROM goats WHERE id = $1', [req.params.id]);
@@ -348,7 +372,7 @@ app.get('/api/dashboard', async (req, res) => {
                COALESCE(SUM(cost_price+extra_costs),0)                 cost,
                COALESCE(SUM(selling_price-(cost_price+extra_costs)),0) profit,
                COALESCE(SUM(CASE WHEN delivery_status='delivered' THEN COALESCE(holding_charges,0) ELSE 0 END),0) total_palai
-        FROM goats WHERE status='sold'`),
+        FROM goats WHERE status IN ('sold','booked')`),
       pool.query(`
         SELECT goat_id, buyer_name, buyer_phone, status, delivery_status,
                selling_price::float, advance_amount::float,

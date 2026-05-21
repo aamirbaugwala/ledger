@@ -262,6 +262,25 @@ tbody tr:hover { background: #f8fafc; }
   font-size: 0.68rem; font-weight: 700; background: #eff6ff;
   color: #1d4ed8; text-transform: capitalize;
 }
+/* Quick Out payment mode selector */
+.qpm-btn {
+  flex: 1; padding: 10px 8px; border-radius: 10px; border: 2px solid var(--border);
+  background: var(--card); font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  transition: all .15s; color: var(--text);
+}
+.qpm-btn:hover  { border-color: var(--green); background: #f0fdf4; }
+.qpm-btn.qpm-active { border-color: var(--green); background: #dcfce7; color: var(--green-deeper); }
+/* Quick Out summary card */
+.qout-summary {
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 16px;
+}
+.qout-goat-id { font-size: 1.1rem; font-weight: 800; margin-bottom: 8px; }
+.qout-row { display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.88rem; padding: 3px 0; }
+.qout-total { font-size: 1.15rem; font-weight: 800; color: var(--green-deeper);
+  border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
+
 .badge-profit { padding: 3px 9px; border-radius: 8px; font-size: 0.73rem; font-weight: 700; }
 .bp { background: #dcfce7; color: #15803d; }
 .bl { background: #fef2f2; color: var(--red); }
@@ -639,6 +658,16 @@ tr.row-selected td { background: rgba(22,163,74,0.08) !important; }
   overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
 .sales-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 820px; }
+
+/* ── Mobile: hide secondary columns & status sub-text ────── */
+@media (max-width: 639px) {
+  .sales-table { min-width: 0; font-size: 0.78rem; }
+  .col-hide-mobile { display: none !important; }
+  .hide-mobile     { display: none !important; }
+  .sales-table tbody td { padding: 9px 8px; }
+  .sales-table thead th { padding: 8px 8px; }
+}
+
 .sales-table thead th {
   background: #f8fafc; padding: 11px 14px; text-align: left;
   font-weight: 700; font-size: 0.66rem; color: var(--text-2);

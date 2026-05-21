@@ -211,7 +211,7 @@ function renderStockTable(goats) {
 
   const totalInvested  = goats.reduce((s, g) => s + parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0), 0);
   const totalBuyWt     = goats.reduce((s, g) => s + parseFloat(g.weight_kg || 0), 0);
-  const totalExpWt     = goats.reduce((s, g) => s + parseFloat(g.weight_kg || 0) * 0.95, 0);
+
   const availableCount = goats.filter(g => g.status === 'available').length;
   const bookedCount    = goats.filter(g => g.status === 'booked').length;
   const bookedPending  = goats.filter(g => g.status === 'booked')
@@ -220,20 +220,22 @@ function renderStockTable(goats) {
   const rows = goats.map(g => {
     const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
     const buyWt     = parseFloat(g.weight_kg || 0);
-    const expWt     = (buyWt * 0.95).toFixed(1);
     const ratePerKg = buyWt > 0 ? Math.round(totalCost / buyWt) : 0;
     const isBooked  = g.status === 'booked';
     const advance   = parseFloat(g.advance_amount || 0);
     const remaining = isBooked ? parseFloat(g.selling_price || 0) - advance : 0;
     const isSelected = _selectedStockIds.has(g.id);
+    const expWtMatch = (g.notes || '').match(/Exp\.wt\s+([\d.]+)kg/);
+    const expWt      = expWtMatch ? parseFloat(expWtMatch[1]) : null;
 
     const tagCell = `
       <span class="goat-tag-sm">🐐 ${esc(g.goat_id)}</span>
       ${g.breed ? `<span class="stc-sub">${esc(g.breed)}</span>` : ''}
       ${g.purchase_date ? `<span class="stc-sub" style="color:var(--text-3);font-size:0.7rem">📅 ${String(g.purchase_date).slice(0,10)}</span>` : ''}`;
 
-    const wtCell    = `<span class="stc-main">${buyWt} kg</span>`;
-    const expWtCell = `<span class="stc-main stk-amber">${expWt} kg</span><span class="stc-sub">×95%</span>`;
+    const wtCell = `
+      <span class="stc-main">${buyWt} kg</span>
+      ${expWt !== null ? `<span class="stc-sub" style="color:var(--amber);font-weight:600">Exp: ${expWt} kg</span>` : ''}`;
 
     const costCell = `
       <span class="stc-main">₹${fmt(totalCost)}</span>
@@ -258,7 +260,7 @@ function renderStockTable(goats) {
     }
 
     const actions = isBooked
-      ? `<button class="btn btn-primary btn-sm" onclick="openFinalizeModal(${g.id})" title="Collect">💳</button>
+      ? `<button class="btn btn-primary btn-sm" onclick="quickOut(${g.id})" title="Mark as Out">� Out</button>
          <button class="btn btn-wa     btn-sm" onclick="sendWhatsApp(${g.id})"       title="WhatsApp">📱</button>
          <button class="btn btn-gray   btn-sm" onclick="undoSale(${g.id}, this)"     title="Undo">↩</button>
          <button class="btn btn-gray   btn-sm" onclick="viewGoat(${g.id})"           title="View">👁</button>`
@@ -274,7 +276,6 @@ function renderStockTable(goats) {
       </td>
       <td>${tagCell}</td>
       <td>${wtCell}</td>
-      <td>${expWtCell}</td>
       <td>${costCell}</td>
       <td>${rateCell}</td>
       <td>${statusCell}</td>
@@ -288,7 +289,6 @@ function renderStockTable(goats) {
       <div class="ssb-item"><span class="ssb-label">Available</span><span class="ssb-val">${availableCount}</span></div>
       <div class="ssb-item ssb-warn"><span class="ssb-label">⏳ Booked</span><span class="ssb-val">${bookedCount}${bookedPending > 0 ? ` · ₹${fmt(bookedPending)} due` : ''}</span></div>
       <div class="ssb-item"><span class="ssb-label">Buy Wt</span><span class="ssb-val">${totalBuyWt.toFixed(1)} kg</span></div>
-      <div class="ssb-item"><span class="ssb-label">Exp. Wt</span><span class="ssb-val">${totalExpWt.toFixed(1)} kg</span></div>
       <div class="ssb-item"><span class="ssb-label">Invested</span><span class="ssb-val">₹${fmt(totalInvested)}</span></div>
     </div>
     <div class="sales-table-wrap">
@@ -301,7 +301,6 @@ function renderStockTable(goats) {
             </th>
             <th onclick="_setStockSort('goat_id')" class="sortable">Tag / Breed ${_stockSortIcon('goat_id')}</th>
             <th onclick="_setStockSort('weight_kg')" class="sortable num">Buy Wt ${_stockSortIcon('weight_kg')}</th>
-            <th onclick="_setStockSort('weight_kg')" class="sortable num">Exp. Wt ${_stockSortIcon('weight_kg')}</th>
             <th onclick="_setStockSort('total_cost')" class="sortable num">Total Cost ${_stockSortIcon('total_cost')}</th>
             <th onclick="_setStockSort('rate_kg')" class="sortable num">Rate/kg <small style="font-weight:400;text-transform:none">(buy wt)</small> ${_stockSortIcon('rate_kg')}</th>
             <th onclick="_setStockSort('status')" class="sortable">Status ${_stockSortIcon('status')}</th>
@@ -324,7 +323,6 @@ function renderStockCards(goats) {
   el.innerHTML = goats.map(g => {
     const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
     const buyWt     = parseFloat(g.weight_kg || 0);
-    const expWt     = (buyWt * 0.95).toFixed(1);
     const ratePerKg = buyWt > 0 ? Math.round(totalCost / buyWt) : 0;
     const isBooked  = g.status === 'booked';
     const advance   = parseFloat(g.advance_amount || 0);
@@ -368,10 +366,6 @@ function renderStockCards(goats) {
           <div class="stk-info-item">
             <span class="stk-lbl">Buy Weight</span>
             <span class="stk-val">${buyWt} kg</span>
-          </div>
-          <div class="stk-info-item">
-            <span class="stk-lbl">Exp. Weight (×95%)</span>
-            <span class="stk-val stk-amber">${expWt} kg</span>
           </div>
           <div class="stk-info-item">
             <span class="stk-lbl">Total Cost</span>
@@ -424,13 +418,16 @@ function goatCard(g, isSold) {
   const profit    = showSale ? (parseFloat(g.selling_price) - totalCost) : null;
   const remaining = isBooked ? (parseFloat(g.selling_price) - parseFloat(g.advance_amount || 0)) : 0;
   const pClass    = profit !== null ? (profit >= 0 ? 'bp' : 'bl') : '';
+  const expWtMatch = (g.notes || '').match(/Exp\.wt\s+([\d.]+)kg/);
+  const expWt      = expWtMatch ? parseFloat(expWtMatch[1]) : null;
 
   const photoEl = g.photo
     ? `<img src="${g.photo}" class="goat-card-photo" alt="goat ${esc(g.goat_id)}" loading="lazy" />`
     : `<div class="goat-card-photo-placeholder">🐐</div>`;
 
   const baseDetails = `
-    <div class="d-item"><span class="d-lbl">Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
+    <div class="d-item"><span class="d-lbl">Buy Wt</span><span class="d-val">${g.weight_kg} kg</span></div>
+    ${expWt !== null ? `<div class="d-item"><span class="d-lbl">Exp Wt</span><span class="d-val" style="color:var(--amber);font-weight:600">${expWt} kg</span></div>` : ''}
     <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
     <div class="d-item"><span class="d-lbl">Cost/kg</span><span class="d-val">₹${costPerKg}</span></div>
     ${g.breed    ? `<div class="d-item"><span class="d-lbl">Breed</span><span class="d-val">${esc(g.breed)}</span></div>` : ''}
@@ -641,13 +638,11 @@ async function openSellModal(id) {
   if (g.status === 'sold') { showToast('This goat is already sold', 'warning'); return; }
 
   const totalCost     = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
-  const expWeight     = (parseFloat(g.weight_kg) * 0.95).toFixed(2);
-  const costRatePerKg = parseFloat(g.weight_kg) > 0 ? totalCost / parseFloat(g.weight_kg) : 0;
 
   document.getElementById('sellId').value           = id;
   document.getElementById('sellDate').value         = today();
   document.getElementById('sellRatePerKg').value    = '';
-  document.getElementById('sellWeight').value       = expWeight;
+  document.getElementById('sellWeight').value       = g.weight_kg;
   document.getElementById('sellTotalPrice').value   = '';
   document.getElementById('sellPalaiDays').value    = '0';
   document.getElementById('sellPalaiRate').value    = '150';
@@ -668,7 +663,6 @@ async function openSellModal(id) {
 
   // Store for calculations
   document.getElementById('sellRatePerKg').dataset.cost      = totalCost;
-  document.getElementById('sellRatePerKg').dataset.costRate  = costRatePerKg.toFixed(4);
   document.getElementById('sellRatePerKg').dataset.goatId    = g.goat_id;
 
   document.getElementById('sellPreview').classList.add('hidden');
@@ -679,9 +673,8 @@ async function openSellModal(id) {
     <div class="d-item"><span class="d-lbl">Goat ID</span><span class="d-val">${esc(g.goat_id)}</span></div>
     <div class="d-item"><span class="d-lbl">Breed</span><span class="d-val">${esc(g.breed || '—')}</span></div>
     <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
-    <div class="d-item"><span class="d-lbl">Expected Weight</span><span class="d-val" style="color:var(--amber)">${expWeight} kg <small>(×95%)</small></span></div>
     <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
-    <div class="d-item"><span class="d-lbl">Cost Rate/kg</span><span class="d-val" style="color:var(--blue)">₹${fmt(Math.round(costRatePerKg))}</span></div>`;
+    <div class="d-item"><span class="d-lbl">Cost Rate/kg</span><span class="d-val" style="color:var(--blue)">₹${fmt(parseFloat(g.weight_kg) > 0 ? Math.round(totalCost / parseFloat(g.weight_kg)) : 0)}</span></div>`;
 
   showModal('sellModal');
   setTimeout(() => document.getElementById('sellRatePerKg').focus(), 150);
@@ -696,10 +689,9 @@ function updateSellPayType() {
 }
 
 function updateSellPreview() {
-  const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
-  const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
-  const fallback   = parseFloat(document.getElementById('sellRatePerKg').dataset.cost) || 0;
-  const actualWt   = parseFloat(document.getElementById('sellWeight').value) || 0;
+  const inputRate     = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
+  const effectiveCost = parseFloat(document.getElementById('sellRatePerKg').dataset.cost) || 0;
+  const actualWt      = parseFloat(document.getElementById('sellWeight').value) || 0;
   const palaiDays  = parseInt(document.getElementById('sellPalaiDays').value) || 0;
   const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 0;
   const isFull     = document.getElementById('sellPayTypeFull').checked;
@@ -708,7 +700,6 @@ function updateSellPreview() {
   const sp           = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
   const palaiCharges = palaiDays > 0 ? palaiDays * palaiRate : 0;
   const grandTotal   = sp + palaiCharges;
-  const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : fallback;
 
   document.getElementById('sellTotalPrice').value   = sp > 0 ? sp : '';
   document.getElementById('sellPalaiCharges').value = palaiDays > 0 ? palaiCharges : '';
@@ -748,7 +739,6 @@ async function confirmSale(e) {
 
   const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value);
   const cost       = parseFloat(document.getElementById('sellRatePerKg').dataset.cost);
-  const costRate   = parseFloat(document.getElementById('sellRatePerKg').dataset.costRate) || 0;
   const goatId     = document.getElementById('sellRatePerKg').dataset.goatId;
   const isFull     = document.getElementById('sellPayTypeFull').checked;
   const advance    = isFull ? 0 : (parseFloat(document.getElementById('sellAdvance').value) || 0);
@@ -761,7 +751,7 @@ async function confirmSale(e) {
   const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 150;
   const actualWt   = parseFloat(saleWeight) || 0;
   const sp         = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
-  const effectiveCost = costRate > 0 && actualWt > 0 ? costRate * actualWt : cost;
+  const effectiveCost = cost;
   const isBooked   = !isFull && advance > 0 && advance < sp;
   const takeToday  = isFull ? (document.getElementById('sellTakeToday')?.checked ?? true) : false;
   const showErr    = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
@@ -825,6 +815,8 @@ async function viewGoat(id) {
   const wt         = parseFloat(g.sale_weight_kg || g.weight_kg || 0);
   const purchDate  = g.purchase_date ? String(g.purchase_date).slice(0,10) : '—';
   const saleDate   = g.sale_date     ? String(g.sale_date).slice(0,10)     : '—';
+  const expWtMatch = (g.notes || '').match(/Exp\.wt\s+([\d.]+)kg/);
+  const expWt      = expWtMatch ? parseFloat(expWtMatch[1]) : null;
   const isInYard   = g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status);
   const isDelivered = g.delivery_status === 'delivered';
   const holdStart  = g.holding_start_date || g.sale_date;
@@ -875,6 +867,7 @@ async function viewGoat(id) {
     <div class="form-section">⚖️ Weight & Cost</div>
     <div class="view-grid">
       <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
+      ${expWt !== null ? `<div class="d-item"><span class="d-lbl">Exp Weight</span><span class="d-val" style="color:var(--amber);font-weight:600">${expWt} kg</span></div>` : ''}
       <div class="d-item"><span class="d-lbl">Cost/kg</span><span class="d-val">₹${fmt(cost / parseFloat(g.weight_kg || 1))}/kg</span></div>
       <div class="d-item"><span class="d-lbl">Cost Price</span><span class="d-val">₹${fmt(cost)}</span></div>
       ${extra > 0 ? `<div class="d-item"><span class="d-lbl">Extra Costs</span><span class="d-val">₹${fmt(extra)}</span></div>` : ''}

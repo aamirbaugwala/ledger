@@ -6,6 +6,84 @@ let _salesData    = [];   // full data from API
 let _salesFiltered = [];  // after filters applied
 let _salesSort    = { col: 'sale_date', dir: 'desc' };
 
+// ── Quick Out ────────────────────────────────────────────────
+let _quickOutId      = null;
+let _quickOutPayMode = '';
+
+async function quickOut(id) {
+  _quickOutId      = id;
+  _quickOutPayMode = '';
+  document.querySelectorAll('.qpm-btn').forEach(b => b.classList.remove('qpm-active'));
+  document.getElementById('quickOutErr').classList.add('hidden');
+  document.getElementById('quickOutSummary').innerHTML =
+    `<div class="qout-summary" style="color:var(--text-3);text-align:center">Loading…</div>`;
+  showModal('quickOutModal');
+
+  const g = await api(`/api/goats/${id}`);
+  if (!g) { showToast('Could not load goat', 'error'); closeModal('quickOutModal'); return; }
+
+  const sp          = parseFloat(g.selling_price || 0);
+  const advance     = parseFloat(g.advance_amount || 0);
+  const remaining   = sp - advance;
+  const holdStart   = g.holding_start_date || g.sale_date;
+  const holdRate    = parseFloat(g.holding_rate || 150);
+  const holdDays    = holdStart
+    ? Math.max(0, Math.round((new Date() - new Date(holdStart)) / 86400000))
+    : 0;
+  const palaiCharges = holdDays * holdRate;
+  const totalCollect = remaining + palaiCharges;
+  const isBooked     = g.status === 'booked';
+
+  // Hide payment section if nothing to collect
+  document.getElementById('quickOutPaySection').style.display = totalCollect > 0 ? '' : 'none';
+
+  document.getElementById('quickOutSummary').innerHTML = `
+    <div class="qout-summary">
+      <div class="qout-goat-id">🐐 ${esc(g.goat_id)}${g.buyer_name ? ` · ${esc(g.buyer_name)}` : ''}</div>
+      <div class="qout-row"><span>💰 Sale Price</span><span><strong>₹${fmt(sp)}</strong></span></div>
+      ${advance > 0 ? `<div class="qout-row"><span>✅ Advance paid</span><span>₹${fmt(advance)}</span></div>` : ''}
+      ${remaining > 0 ? `<div class="qout-row"><span>💸 Balance</span><span style="color:var(--red)"><strong>₹${fmt(remaining)}</strong></span></div>` : ''}
+      ${holdDays > 0
+        ? `<div class="qout-row"><span>🏠 Palai (${holdDays}d × ₹${fmt(holdRate)})</span><span style="color:#ea580c"><strong>₹${fmt(palaiCharges)}</strong></span></div>`
+        : `<div class="qout-row" style="color:var(--text-3)"><span>🏠 Palai</span><span>Same day — no charges</span></div>`}
+      ${totalCollect > 0
+        ? `<div class="qout-total">💰 Total to collect: ₹${fmt(Math.round(totalCollect))}</div>`
+        : `<div class="qout-total" style="color:var(--green-deeper)">✅ Nothing to collect — fully settled</div>`}
+    </div>`;
+}
+
+function selectQuickPayMode(mode) {
+  _quickOutPayMode = mode === 'skip' ? '' : mode;
+  document.querySelectorAll('.qpm-btn').forEach(b => b.classList.remove('qpm-active'));
+  document.getElementById(`qpm-${mode}`)?.classList.add('qpm-active');
+}
+
+async function confirmQuickOut() {
+  if (!_quickOutId) return;
+  const errEl = document.getElementById('quickOutErr');
+  errEl.classList.add('hidden');
+  setLoading('quickOutBtn', true);
+
+  const res  = await fetch(`/api/goats/${_quickOutId}/finalize`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ final_payment_mode: _quickOutPayMode })
+  });
+  const data = await res.json();
+  setLoading('quickOutBtn', false);
+
+  if (!res.ok) {
+    errEl.textContent = '⚠️ ' + (data.error || 'Failed');
+    errEl.classList.remove('hidden');
+    return;
+  }
+  closeModal('quickOutModal');
+  const palaiMsg = data.holding_charges > 0
+    ? ` · Palai: ₹${fmt(data.holding_charges)} (${data.holding_days}d)` : '';
+  showToast(`📦 Goat out!${palaiMsg}`, 'success', 4000);
+  await loadSold();
+  loadDashboard();
+}
+
 // ── Load ────────────────────────────────────────────────────
 async function loadSold() {
   const container = document.getElementById('soldList');
@@ -100,6 +178,16 @@ function renderSalesTable(goats) {
                             .reduce((s, g) => s + parseFloat(g.selling_price || 0) - parseFloat(g.advance_amount || 0), 0);
   const avgProfit    = goats.length ? (totalProfit / goats.length) : 0;
   const margin       = totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) : 0;
+  // Extra insights
+  const winCount     = goats.filter(g => (parseFloat(g.selling_price||0) - parseFloat(g.cost_price||0) - parseFloat(g.extra_costs||0)) >= 0).length;
+  const lossCount    = goats.length - winCount;
+  const totalWt      = goats.reduce((s, g) => s + parseFloat(g.sale_weight_kg || g.weight_kg || 0), 0);
+  const totalCostInv = totalCostAll;
+  const avgRateKg    = totalWt > 0 ? Math.round(totalRev / totalWt) : 0;
+  const bestGoat     = goats.reduce((best, g) => {
+    const p = parseFloat(g.selling_price||0) - parseFloat(g.cost_price||0) - parseFloat(g.extra_costs||0);
+    return (!best || p > best.p) ? { id: g.goat_id, p } : best;
+  }, null);
   // Palai totals
   const totalPalaiCollected = goats.filter(g => g.delivery_status === 'delivered')
     .reduce((s, g) => s + parseFloat(g.holding_charges || 0), 0);
@@ -161,22 +249,22 @@ function renderSalesTable(goats) {
       const agreedNote = agreedDays > 0 ? `Agreed ${agreedDays}d palai` : `Palai open`;
       statusBadge = `
         <span class="st-badge st-inyard-bal">🏠 In Yard</span>
-        <div style="margin-top:3px"><span class="stc-sub" style="color:#b45309;font-weight:700">Balance Due</span></div>
-        <div style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} palai</span></div>
-        <div style="margin-top:1px"><span class="stc-sub" style="color:#78350f">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
+        <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub" style="color:#b45309;font-weight:700">Balance Due</span></div>
+        <div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} palai</span></div>
+        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#78350f">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
     } else if (isInYard) {
       const agreedNote = agreedDays > 0 ? `Agreed ${agreedDays}d palai` : `Palai open`;
       statusBadge = `
         <span class="st-badge st-inyard-paid">🏠 In Yard</span>
-        <div style="margin-top:3px"><span class="stc-sub" style="color:#1d4ed8;font-weight:700">Paid · Palai Pending</span></div>
-        <div style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} accrued</span></div>
-        <div style="margin-top:1px"><span class="stc-sub" style="color:#1e40af">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
+        <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub" style="color:#1d4ed8;font-weight:700">Paid · Palai Pending</span></div>
+        <div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} accrued</span></div>
+        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#1e40af">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
     } else if (isDelivered) {
       const delDate = g.delivery_date ? String(g.delivery_date).slice(0,10) : '—';
       statusBadge = `
         <span class="st-badge st-out">📦 Out</span>
-        <div style="margin-top:3px"><span class="stc-sub">${delDate}</span></div>
-        ${holdCharges > 0 ? `<div style="margin-top:2px"><span class="stc-sub">Held ${holdDays}d · ₹${fmt(holdCharges)}</span></div>` : ''}`;
+        <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub">${delDate}</span></div>
+        ${holdCharges > 0 ? `<div class="hide-mobile" style="margin-top:2px"><span class="stc-sub">Held ${holdDays}d · ₹${fmt(holdCharges)}</span></div>` : ''}`;
     } else {
       statusBadge = `<span class="st-badge st-sold">✅ Sold</span>`;
     }
@@ -222,7 +310,7 @@ function renderSalesTable(goats) {
       ${g.breed ? `<span class="stc-sub">${esc(g.breed)}</span>` : ''}`;
 
     const actionBtn = (isBooked || isInYard)
-      ? `<button class="btn btn-primary btn-sm" onclick="openFinalizeModal(${g.id})" title="Collect & Release">� Collect &amp; Out</button>`
+      ? `<button class="btn btn-primary btn-sm" onclick="quickOut(${g.id})" title="Mark as Out">📦 Out</button>`
       : `<button class="btn btn-gray btn-sm" onclick="undoSale(${g.id}, this)" title="Undo Sale">↩</button>`;
 
     return `<tr class="${isBooked ? 'row-inyard-bal' : isInYard ? 'row-inyard-paid' : ''}">
@@ -231,10 +319,10 @@ function renderSalesTable(goats) {
       <td>${wtCell}</td>
       <td>${finCell}</td>
       <td>${profitCell}</td>
-      <td>${palaiCell}</td>
-      <td>${buyerCell}</td>
-      <td>${payCell}</td>
-      <td><span class="stc-main">${saleDate}</span></td>
+      <td class="col-hide-mobile">${palaiCell}</td>
+      <td class="col-hide-mobile">${buyerCell}</td>
+      <td class="col-hide-mobile">${payCell}</td>
+      <td class="col-hide-mobile"><span class="stc-main">${saleDate}</span></td>
       <td>
         <div class="tbl-actions">
           ${actionBtn}
@@ -250,9 +338,13 @@ function renderSalesTable(goats) {
     <div class="sales-summary-bar">
       <div class="ssb-item"><span class="ssb-label">Showing</span><span class="ssb-val">${goats.length} of ${_salesData.length}</span></div>
       <div class="ssb-item"><span class="ssb-label">Revenue</span><span class="ssb-val">₹${fmt(totalRev)}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Cost Invested</span><span class="ssb-val">₹${fmt(totalCostInv)}</span></div>
       <div class="ssb-item"><span class="ssb-label">Profit</span><span class="ssb-val ${totalProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${totalProfit >= 0 ? '+' : ''}₹${fmt(totalProfit)}</span></div>
       <div class="ssb-item"><span class="ssb-label">Margin</span><span class="ssb-val">${margin}%</span></div>
-      <div class="ssb-item"><span class="ssb-label">Avg Profit</span><span class="ssb-val ${avgProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${avgProfit >= 0 ? '+' : ''}₹${fmt(avgProfit)}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Avg Profit</span><span class="ssb-val ${avgProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${avgProfit >= 0 ? '+' : ''}₹${fmt(Math.round(avgProfit))}</span></div>
+      <div class="ssb-item"><span class="ssb-label">Win/Loss</span><span class="ssb-val"><span class="profit-pos">${winCount}✅</span> / <span class="profit-neg">${lossCount}📉</span></span></div>
+      ${bestGoat ? `<div class="ssb-item"><span class="ssb-label">Best Sale</span><span class="ssb-val profit-pos">${esc(bestGoat.id)} +₹${fmt(bestGoat.p)}</span></div>` : ''}
+      ${totalWt > 0 ? `<div class="ssb-item"><span class="ssb-label">Total Wt</span><span class="ssb-val">${totalWt.toFixed(1)} kg · ₹${fmt(avgRateKg)}/kg</span></div>` : ''}
       <div class="ssb-item"><span class="ssb-label">Paid</span><span class="ssb-val">${fullyPaid}</span></div>
       ${totalPalaiCollected > 0 ? `<div class="ssb-item" style="border-left:2px solid #ea580c"><span class="ssb-label" style="color:#ea580c">🏠 Palai Collected</span><span class="ssb-val" style="color:#ea580c">₹${fmt(Math.round(totalPalaiCollected))}</span></div>` : ''}
       <div class="ssb-item ssb-warn"><span class="ssb-label">⏳ Pending</span><span class="ssb-val">${pending} · ₹${fmt(totalPending)}</span></div>
@@ -268,10 +360,10 @@ function renderSalesTable(goats) {
             <th onclick="_setSalesSort('weight_kg')" class="sortable">Weight ${_sortIcon('weight_kg')}</th>
             <th onclick="_setSalesSort('selling_price')" class="sortable num">Price / Cost ${_sortIcon('selling_price')}</th>
             <th onclick="_setSalesSort('profit')"   class="sortable num">Profit / Margin ${_sortIcon('profit')}</th>
-            <th class="num">Palai</th>
-            <th onclick="_setSalesSort('buyer_name')" class="sortable">Buyer ${_sortIcon('buyer_name')}</th>
-            <th>Payment</th>
-            <th onclick="_setSalesSort('sale_date')" class="sortable">Date ${_sortIcon('sale_date')}</th>
+            <th class="num col-hide-mobile">Palai</th>
+            <th onclick="_setSalesSort('buyer_name')" class="sortable col-hide-mobile">Buyer ${_sortIcon('buyer_name')}</th>
+            <th class="col-hide-mobile">Payment</th>
+            <th onclick="_setSalesSort('sale_date')" class="sortable col-hide-mobile">Date ${_sortIcon('sale_date')}</th>
             <th>Actions</th>
           </tr>
         </thead>

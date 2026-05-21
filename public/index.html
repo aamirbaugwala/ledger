@@ -47,6 +47,7 @@
     <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openBulkModal,80)">📦 Bulk Add (Mandi)</button>
     <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openImportModal,80)">📥 Import from Excel</button>
     <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openMarketCalc,80)">🏷️ Market Rate Calc</button>
+    <button class="sidebar-tool-btn" onclick="toggleSidebar(false);setTimeout(openRecalcCostsModal,80)">🔄 Update Shared Costs</button>
     <button class="sidebar-tool-btn" id="pwaInstallBtn" style="display:none" onclick="installPWA()">📲 Install App</button>
   </div>
 </nav>
@@ -253,30 +254,23 @@
 </div>
 
 <!-- MODAL: Collect & Release -->
-<div id="finalizeModal" class="modal hidden">
-  <div class="modal-box"><div class="modal-inner">
-    <div class="modal-header"><h2>💳 Collect & Release</h2><button class="modal-close" onclick="closeModal('finalizeModal')">✕</button></div>
-    <div id="finalizeInfoBox" class="sell-info-box"></div>
-    <form id="finalizeForm">
-      <input type="hidden" id="finalizeId" />
-      <div class="form-section">Delivery Details</div>
-      <div class="form-row">
-        <div class="form-group"><label>Delivery Date *</label><input type="date" id="finalizeDeliveryDate" required oninput="updateFinalizePreview()" /></div>
-        <div class="form-group"><label>Palai Rate (₹/day)</label><input type="number" id="finalizeHoldRate" min="0" oninput="updateFinalizePreview()" /></div>
+<div id="quickOutModal" class="modal hidden">
+  <div class="modal-box" style="max-width:440px"><div class="modal-inner">
+    <div class="modal-header"><h2>� Mark Goat Out</h2><button class="modal-close" onclick="closeModal('quickOutModal')">✕</button></div>
+    <div id="quickOutSummary"></div>
+    <div id="quickOutPaySection">
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text-2);margin-bottom:8px">PAYMENT MODE</div>
+      <div style="display:flex;gap:8px">
+        <button class="qpm-btn" id="qpm-cash"   onclick="selectQuickPayMode('cash')">💵 Cash</button>
+        <button class="qpm-btn" id="qpm-online" onclick="selectQuickPayMode('online')">📱 Online</button>
+        <button class="qpm-btn" id="qpm-skip"   onclick="selectQuickPayMode('skip')">— Skip</button>
       </div>
-      <div id="finalizeSummaryBox" class="sell-info-box" style="margin:6px 0 10px;display:none"></div>
-      <div class="form-row">
-        <div class="form-group"><label>Total to Collect (₹)</label><input type="number" id="finalizeTotalAmt" readonly tabindex="-1" class="input-readonly input-total" /></div>
-        <div class="form-group"><label id="finalizePayLabel">Payment Mode *</label>
-          <select id="finalizeFinalMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
-        </div>
-      </div>
-      <div id="finalizeFormErr" class="error-msg hidden"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-gray" onclick="closeModal('finalizeModal')">Cancel</button>
-        <button type="submit" id="finalizeBtn" class="btn btn-primary">📦 Collect & Mark Out</button>
-      </div>
-    </form>
+    </div>
+    <div id="quickOutErr" class="error-msg hidden" style="margin-top:10px"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-gray" onclick="closeModal('quickOutModal')">Cancel</button>
+      <button class="btn btn-primary" id="quickOutBtn" onclick="confirmQuickOut()">📦 Confirm Out</button>
+    </div>
   </div></div>
 </div>
 
@@ -285,38 +279,6 @@
   <div class="modal-box"><div class="modal-inner">
     <div class="modal-header"><h2 id="viewTitle">Goat Details</h2><button class="modal-close" onclick="closeModal('viewModal')">✕</button></div>
     <div id="viewContent"></div>
-  </div></div>
-</div>
-
-<!-- MODAL: Mark as Delivered -->
-<div id="deliverModal" class="modal hidden">
-  <div class="modal-box"><div class="modal-inner">
-    <div class="modal-header"><h2>📦 Mark Goat as Delivered</h2><button class="modal-close" onclick="closeModal('deliverModal')">✕</button></div>
-    <div id="deliverInfoBox" class="sell-info-box"></div>
-    <form id="deliverForm">
-      <input type="hidden" id="deliverId" />
-      <div class="form-section">Delivery Details</div>
-      <div class="form-row">
-        <div class="form-group"><label>Delivery Date *</label><input type="date" id="deliverDate" required oninput="updateDeliverPreview()" /></div>
-        <div class="form-group"><label>Palai Rate (₹/day)</label><input type="number" id="deliverRate" value="150" min="0" oninput="updateDeliverPreview()" /></div>
-      </div>
-      <div id="deliverPreview" class="profit-preview hidden"></div>
-      <div id="deliverPaySection" style="display:none">
-        <div class="form-section">Collect Outstanding Payment</div>
-        <div id="deliverPaySummary" class="sell-info-box" style="margin-bottom:10px"></div>
-        <div class="form-row">
-          <div class="form-group"><label>Amount to Collect (₹)</label><input type="number" id="deliverCollectAmt" readonly tabindex="-1" class="input-readonly input-total" /></div>
-          <div class="form-group"><label>Payment Mode *</label>
-            <select id="deliverPayMode"><option value="">Select mode</option><option value="cash">💵 Cash</option><option value="online">📱 Online</option><option value="cash+online">💵+📱 Split</option></select>
-          </div>
-        </div>
-      </div>
-      <div id="deliverFormErr" class="error-msg hidden"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-gray" onclick="closeModal('deliverModal')">Cancel</button>
-        <button type="submit" id="deliverBtn" class="btn btn-primary">📦 Confirm Delivery</button>
-      </div>
-    </form>
   </div></div>
 </div>
 
@@ -446,6 +408,59 @@
     <div id="marketCalcResults"></div>
     <div class="modal-actions">
       <button class="btn btn-gray" onclick="closeModal('marketCalcModal')">Close</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- ── Update Shared Costs Modal ─────────────────────────── -->
+<div id="recalcCostsModal" class="modal hidden">
+  <div class="modal-box"><div class="modal-inner">
+    <div class="modal-header">
+      <h2>🔄 Update Shared Costs</h2>
+      <button class="modal-close" onclick="closeModal('recalcCostsModal')">✕</button>
+    </div>
+    <p class="bulk-hint">Enter costs to update <strong>extra costs</strong> for all goats, redistributed proportionally by buy weight.</p>
+
+    <div id="recalcCurrentInfo" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--text-2)">
+      Loading current totals…
+    </div>
+
+    <!-- Mode toggle -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <label style="flex:1;cursor:pointer">
+        <input type="radio" name="rcMode" value="add" checked onchange="recalcPreview()" />
+        <strong>➕ Add to existing</strong>
+        <div style="font-size:0.75rem;color:var(--text-3);margin-top:2px">Enter new costs incurred — adds on top of current extra costs</div>
+      </label>
+      <label style="flex:1;cursor:pointer">
+        <input type="radio" name="rcMode" value="replace" onchange="recalcPreview()" />
+        <strong>🔄 Replace totals</strong>
+        <div style="font-size:0.75rem;color:var(--text-3);margin-top:2px">Enter full new amount — overwrites current extra costs</div>
+      </label>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="form-group" style="margin:0">
+        <label>🚚 Transport (₹)</label>
+        <input type="number" id="rcTransport" placeholder="0" min="0" oninput="recalcPreview()" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>🤝 HKB (₹)</label>
+        <input type="number" id="rcHKB" placeholder="0" min="0" oninput="recalcPreview()" />
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>📦 Other (₹)</label>
+        <input type="number" id="rcOther" placeholder="0" min="0" oninput="recalcPreview()" />
+      </div>
+    </div>
+
+    <div id="recalcPreviewBox" class="hidden" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:0.83rem"></div>
+
+    <div id="recalcErr" class="error-msg hidden"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="closeModal('recalcCostsModal')">Cancel</button>
+      <button class="btn btn-primary" id="recalcSaveBtn" onclick="confirmRecalcCosts()">✅ Apply to All Goats</button>
     </div>
   </div></div>
 </div>
