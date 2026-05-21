@@ -256,6 +256,59 @@ app.post('/api/goats/:id/finalize', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Edit existing sale (update sale details for a sold/booked goat)
+app.patch('/api/goats/:id/sale', async (req, res) => {
+  const { selling_price, buyer_name, buyer_phone, sale_date,
+          sale_weight_kg, advance_amount, advance_mode, final_payment_mode,
+          palai_days, palai_rate, take_today } = req.body;
+  if (!selling_price || !sale_date)
+    return res.status(400).json({ error: 'Selling price and sale date are required' });
+  try {
+    const { rows } = await pool.query('SELECT * FROM goats WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Goat not found' });
+    const g = rows[0];
+    if (g.status !== 'sold' && g.status !== 'booked')
+      return res.status(400).json({ error: 'Goat is not in a sold/booked state' });
+
+    const sp        = parseFloat(selling_price);
+    const advance   = parseFloat(advance_amount) || 0;
+    const newStatus = (advance > 0 && advance < sp) ? 'booked' : 'sold';
+    const isTakeToday = (newStatus === 'sold') && (take_today === true || take_today === 'true');
+    // Preserve delivery status if already delivered, otherwise recalculate
+    let delivStatus, delivDate, holdStart;
+    if (g.delivery_status === 'delivered') {
+      delivStatus = 'delivered';
+      delivDate   = g.delivery_date;
+      holdStart   = g.holding_start_date;
+    } else {
+      delivStatus = newStatus === 'booked' ? null : (isTakeToday ? 'delivered' : 'in_yard');
+      delivDate   = isTakeToday ? sale_date : g.delivery_date;
+      holdStart   = (!isTakeToday && newStatus === 'sold') ? (g.holding_start_date || sale_date) : g.holding_start_date;
+    }
+
+    await pool.query(
+      `UPDATE goats SET
+         status=$1, selling_price=$2, buyer_name=$3, buyer_phone=$4,
+         sale_date=$5, sale_weight_kg=$6,
+         advance_amount=$7, advance_mode=$8,
+         final_payment_mode=$9,
+         delivery_status=$10, holding_start_date=$11, holding_rate=$12,
+         delivery_date=$13, agreed_palai_days=$14,
+         updated_at=NOW()
+       WHERE id=$15`,
+      [newStatus, sp, buyer_name || '', buyer_phone || '', sale_date,
+       parseFloat(sale_weight_kg) || null,
+       advance, advance_mode || '',
+       final_payment_mode || '',
+       delivStatus, holdStart, parseFloat(palai_rate) || 150,
+       delivDate,
+       parseInt(palai_days) || 0,
+       req.params.id]
+    );
+    res.json({ success: true, status: newStatus });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Revert to available
 app.post('/api/goats/:id/unsell', async (req, res) => {
   try {

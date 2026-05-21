@@ -91,7 +91,17 @@ async function loadSold() {
   // Fetch ALL goats then exclude available — so booked goats show in sales tab too
   const all = await api('/api/goats') || [];
   _salesData = all.filter(g => g.status === 'sold' || g.status === 'booked');
+  _populateSalesBreedFilter(_salesData);
   _applyFiltersAndSort();
+}
+
+function _populateSalesBreedFilter(data) {
+  const el = document.getElementById('salesFilterBreed');
+  if (!el) return;
+  const current = el.value;
+  const breeds  = [...new Set(data.map(g => g.breed).filter(Boolean))].sort();
+  el.innerHTML  = '<option value="">All Breeds</option>' +
+    breeds.map(b => `<option value="${b}"${b === current ? ' selected' : ''}>${b}</option>`).join('');
 }
 
 // ── Filter controls (read from DOM) ─────────────────────────
@@ -101,6 +111,7 @@ function _applyFiltersAndSort() {
   const q       = (document.getElementById('soldSearch')?.value || '').toLowerCase();
   const status  = document.getElementById('salesFilterStatus')?.value  || '';
   const payment = document.getElementById('salesFilterPayment')?.value || '';
+  const breed   = document.getElementById('salesFilterBreed')?.value   || '';
   const dateFrom = document.getElementById('salesDateFrom')?.value || '';
   const dateTo   = document.getElementById('salesDateTo')?.value   || '';
 
@@ -116,9 +127,10 @@ function _applyFiltersAndSort() {
       || (status === 'booked'  && g.status === 'booked')
       || (status === 'sold'    && g.status === 'sold' && g.delivery_status === 'delivered');
     const matchPayment = !payment || g.final_payment_mode === payment || g.advance_mode === payment;
+    const matchBreed   = !breed   || (g.breed || '') === breed;
     const matchFrom    = !dateFrom || saleDate >= dateFrom;
     const matchTo      = !dateTo   || saleDate <= dateTo;
-    return matchQ && matchStatus && matchPayment && matchFrom && matchTo;
+    return matchQ && matchStatus && matchPayment && matchBreed && matchFrom && matchTo;
   });
 
   // Sort
@@ -195,9 +207,10 @@ function renderSalesTable(goats) {
   const inYardGoats  = goats.filter(g => g.status === 'sold' && (g.delivery_status === 'in_yard' || !g.delivery_status));
   const inYardCount  = inYardGoats.length;
   const inYardAccruing = inYardGoats.reduce((s, g) => {
+    if (!parseFloat(g.holding_rate || 0)) return s;
     const start = g.holding_start_date || g.sale_date;
     const days  = start ? Math.max(0, Math.round((new Date() - new Date(start)) / 86400000)) : 0;
-    return s + days * parseFloat(g.holding_rate || 150);
+    return s + days * parseFloat(g.holding_rate);
   }, 0);
 
   if (!goats.length) {
@@ -237,28 +250,27 @@ function renderSalesTable(goats) {
       : (isDelivered && holdStart && g.delivery_date)
       ? Math.max(0, Math.round((new Date(g.delivery_date) - new Date(holdStart)) / 86400000))
       : 0;
-    const holdRate    = parseFloat(g.holding_rate || 150);
+    const holdRate    = parseFloat(g.holding_rate || 0);
+    const palaiEnabled = holdRate > 0;
     const agreedDays  = parseInt(g.agreed_palai_days || 0);
     const holdCharges = isDelivered
       ? parseFloat(g.holding_charges || 0)
-      : isInYard ? holdDays * holdRate : 0;
+      : (isInYard && palaiEnabled) ? holdDays * holdRate : 0;
 
     // ── Unified status badge ─────────────────────────────────
     let statusBadge;
     if (isBooked) {
-      const agreedNote = agreedDays > 0 ? `Agreed ${agreedDays}d palai` : `Palai open`;
       statusBadge = `
         <span class="st-badge st-inyard-bal">🏠 In Yard</span>
         <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub" style="color:#b45309;font-weight:700">Balance Due</span></div>
-        <div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} palai</span></div>
-        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#78350f">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
+        ${palaiEnabled ? `<div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} palai</span></div>
+        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#78350f">${agreedDays > 0 ? `Agreed ${agreedDays}d` : 'Palai open'} @ ₹${fmt(holdRate)}/d</span></div>` : ''}`;
     } else if (isInYard) {
-      const agreedNote = agreedDays > 0 ? `Agreed ${agreedDays}d palai` : `Palai open`;
       statusBadge = `
         <span class="st-badge st-inyard-paid">🏠 In Yard</span>
-        <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub" style="color:#1d4ed8;font-weight:700">Paid · Palai Pending</span></div>
-        <div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} accrued</span></div>
-        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#1e40af">${agreedNote} @ ₹${fmt(holdRate)}/d</span></div>`;
+        <div class="hide-mobile" style="margin-top:3px"><span class="stc-sub" style="color:#1d4ed8;font-weight:700">Paid${palaiEnabled ? ' · Palai Pending' : ''}</span></div>
+        ${palaiEnabled ? `<div class="hide-mobile" style="margin-top:2px"><span class="stc-sub hold-days">${holdDays}d · ₹${fmt(holdCharges)} accrued</span></div>
+        <div class="hide-mobile" style="margin-top:1px"><span class="stc-sub" style="color:#1e40af">${agreedDays > 0 ? `Agreed ${agreedDays}d` : 'Palai open'} @ ₹${fmt(holdRate)}/d</span></div>` : ''}`;
     } else if (isDelivered) {
       const delDate = g.delivery_date ? String(g.delivery_date).slice(0,10) : '—';
       statusBadge = `
@@ -282,12 +294,14 @@ function renderSalesTable(goats) {
       <span class="stc-sub ${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit >= 0 ? '▲' : '▼'} ${Math.abs(marginPct)}% margin</span>`;
 
     // Palai is separate income — NOT included in profit
-    const palaiCell = holdCharges > 0
+    const palaiCell = !palaiEnabled
+      ? `<span class="stc-muted">—</span>`
+      : holdCharges > 0
       ? `<span class="stc-main" style="color:#ea580c">₹${fmt(Math.round(holdCharges))}</span>
          <span class="stc-sub">${holdDays}d × ₹${fmt(holdRate)}/d${(isInYard || isBooked) ? ' <em>est.</em>' : ''}</span>`
       : agreedDays > 0
       ? `<span class="stc-muted" style="font-size:0.72rem">${agreedDays}d agreed<br>pending delivery</span>`
-      : `<span class="stc-muted">—</span>`;
+      : `<span class="stc-muted" style="font-size:0.72rem">Enabled<br>pending delivery</span>`;
 
     const buyerCell = g.buyer_name
       ? `<span class="stc-main">${esc(g.buyer_name)}</span>${g.buyer_phone ? `<span class="stc-sub">📞 ${esc(g.buyer_phone)}</span>` : ''}`
@@ -320,12 +334,13 @@ function renderSalesTable(goats) {
       <td>${finCell}</td>
       <td>${profitCell}</td>
       <td class="col-hide-mobile">${palaiCell}</td>
-      <td class="col-hide-mobile">${buyerCell}</td>
+      <td>${buyerCell}</td>
       <td class="col-hide-mobile">${payCell}</td>
       <td class="col-hide-mobile"><span class="stc-main">${saleDate}</span></td>
       <td>
         <div class="tbl-actions">
           ${actionBtn}
+          <button class="btn btn-gray btn-sm" onclick="openEditSaleModal(${g.id})" title="Edit Sale">✏️</button>
           <button class="btn btn-wa btn-sm" onclick="sendWhatsApp(${g.id})" title="WhatsApp Receipt">📱</button>
           <button class="btn btn-gray btn-sm" onclick="viewGoat(${g.id})" title="View Details">👁</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGoat(${g.id}, 'sold')" title="Delete">🗑</button>
@@ -361,7 +376,7 @@ function renderSalesTable(goats) {
             <th onclick="_setSalesSort('selling_price')" class="sortable num">Price / Cost ${_sortIcon('selling_price')}</th>
             <th onclick="_setSalesSort('profit')"   class="sortable num">Profit / Margin ${_sortIcon('profit')}</th>
             <th class="num col-hide-mobile">Palai</th>
-            <th onclick="_setSalesSort('buyer_name')" class="sortable col-hide-mobile">Buyer ${_sortIcon('buyer_name')}</th>
+            <th onclick="_setSalesSort('buyer_name')" class="sortable">Buyer ${_sortIcon('buyer_name')}</th>
             <th class="col-hide-mobile">Payment</th>
             <th onclick="_setSalesSort('sale_date')" class="sortable col-hide-mobile">Date ${_sortIcon('sale_date')}</th>
             <th>Actions</th>

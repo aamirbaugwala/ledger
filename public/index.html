@@ -90,6 +90,9 @@
         <option value="available">✅ Available</option>
         <option value="booked">⏳ Booked</option>
       </select>
+      <select id="stockFilterBreed" onchange="filterStock()" class="filter-select">
+        <option value="">All Breeds</option>
+      </select>
       <button id="stockViewToggle" class="btn btn-gray btn-sm" onclick="toggleStockView()">🃏 Cards View</button>
       <button class="btn btn-primary" onclick="openAddModal()">＋ Add</button>
     </div>
@@ -123,9 +126,12 @@
           <option value="online">📱 Online</option>
           <option value="cash+online">💵+📱 Split</option>
         </select>
+        <select id="salesFilterBreed" onchange="filterSold()" class="filter-select">
+          <option value="">All Breeds</option>
+        </select>
         <input type="date" id="salesDateFrom" onchange="filterSold()" class="filter-date" title="From date" />
         <input type="date" id="salesDateTo"   onchange="filterSold()" class="filter-date" title="To date" />
-        <button class="btn btn-gray btn-sm" onclick="document.getElementById('salesFilterStatus').value='';document.getElementById('salesFilterPayment').value='';document.getElementById('salesDateFrom').value='';document.getElementById('salesDateTo').value='';document.getElementById('soldSearch').value='';filterSold()">✕ Clear</button>
+        <button class="btn btn-gray btn-sm" onclick="document.getElementById('salesFilterStatus').value='';document.getElementById('salesFilterPayment').value='';document.getElementById('salesFilterBreed').value='';document.getElementById('salesDateFrom').value='';document.getElementById('salesDateTo').value='';document.getElementById('soldSearch').value='';filterSold()">✕ Clear</button>
       </div>
     </div>
     <div id="soldList"></div>
@@ -192,14 +198,19 @@
       <input type="hidden" id="sellId" />
       <div class="form-section">Sale Details</div>
       <div class="form-row">
-        <div class="form-group"><label>Rate per kg (₹) *</label><input type="number" id="sellRatePerKg" placeholder="e.g. 700" min="1" required oninput="updateSellPreview()" /></div>
+        <div class="form-group"><label>Rate per kg (₹)</label><input type="number" id="sellRatePerKg" placeholder="e.g. 700" min="1" oninput="updateSellFromRate()" /></div>
         <div class="form-group"><label>Sale Weight (kg) *</label><input type="number" id="sellWeight" placeholder="Current weight" step="0.1" min="0.1" required oninput="updateSellPreview()" /></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Total Price (₹)</label><input type="number" id="sellTotalPrice" readonly tabindex="-1" placeholder="Auto-calculated" class="input-readonly" /></div>
+        <div class="form-group"><label>Total Price (₹) <small style="font-weight:400;color:var(--text-3)">or enter directly</small></label><input type="number" id="sellTotalPrice" placeholder="Auto-calculated or enter total" min="1" oninput="updateSellFromTotal()" /></div>
         <div class="form-group"><label>Sale Date *</label><input type="date" id="sellDate" required /></div>
       </div>
       <div class="form-section">Palai / Yard Holding <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></div>
+      <label class="take-today-check">
+        <input type="checkbox" id="sellPalaiEnabled" onchange="togglePalaiSection()" />
+        <span>🏠 Goat staying in yard — enable palai / holding charges</span>
+      </label>
+      <div id="sellPalaiFields" style="display:none">
       <div class="form-row">
         <div class="form-group"><label>Agreed Palai Days <small>(0 = open, charged on delivery)</small></label><input type="number" id="sellPalaiDays" value="0" min="0" oninput="updateSellPreview()" /></div>
         <div class="form-group"><label>Palai Rate (₹/day)</label><input type="number" id="sellPalaiRate" value="150" min="0" oninput="updateSellPreview()" /></div>
@@ -207,6 +218,7 @@
       <div class="form-row">
         <div class="form-group"><label>Palai Charges (₹)</label><input type="number" id="sellPalaiCharges" readonly tabindex="-1" placeholder="Days × Rate" class="input-readonly" /></div>
         <div class="form-group"><label>Grand Total (₹)</label><input type="number" id="sellGrandTotal" readonly tabindex="-1" placeholder="Price + Palai" class="input-readonly input-total" /></div>
+      </div>
       </div>
       <div class="form-section">Buyer Info</div>
       <div class="form-row">

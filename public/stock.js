@@ -6,6 +6,10 @@ let _stockView = 'table';   // 'table' | 'cards'
 let _stockSort  = { col: 'goat_id', dir: 'asc' };
 let _stockFilter = '';     // '' | 'available' | 'booked'
 
+// ── Sell modal dual-input state ─────────────────────────────
+let _sellLastEdited = 'rate';  // 'rate' | 'total'
+let _sellEditMode   = false;   // true when editing existing sale
+
 // ── Multi-select state ──────────────────────────────────────
 let _selectedStockIds = new Set();
 
@@ -160,6 +164,7 @@ async function loadStock() {
     <div>Loading stock…</div>
   </div>`;
   allStock = await api('/api/goats?status=available') || [];
+  _populateBreedSelect('stockFilterBreed', allStock);
   renderStock(allStock);
   updateNavBadge('stock', allStock.length);
 }
@@ -167,17 +172,27 @@ async function loadStock() {
 function filterStock() {
   const q = document.getElementById('stockSearch').value.toLowerCase();
   const statusFilter = document.getElementById('stockFilterStatus')?.value || '';
+  const breedFilter  = document.getElementById('stockFilterBreed')?.value  || '';
   let filtered = allStock.filter(g =>
     g.goat_id.toLowerCase().includes(q) ||
     (g.breed  || '').toLowerCase().includes(q) ||
     (g.notes  || '').toLowerCase().includes(q)
   );
   if (statusFilter) filtered = filtered.filter(g => g.status === statusFilter);
+  if (breedFilter)  filtered = filtered.filter(g => (g.breed || '') === breedFilter);
   renderStock(_sortStockGoats(filtered));
 }
 
+function _populateBreedSelect(elId, goats) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const current = el.value;
+  const breeds  = [...new Set(goats.map(g => g.breed).filter(Boolean))].sort();
+  el.innerHTML  = '<option value="">All Breeds</option>' +
+    breeds.map(b => `<option value="${b}"${b === current ? ' selected' : ''}>${b}</option>`).join('');
+}
+
 function toggleStockView() {
-  _stockView = _stockView === 'table' ? 'cards' : 'table';
   const btn = document.getElementById('stockViewToggle');
   if (btn) btn.textContent = _stockView === 'table' ? '🃏 Cards View' : '📋 Table View';
   filterStock();
@@ -637,6 +652,8 @@ async function openSellModal(id) {
   if (!g) { showToast('Could not load goat details', 'error'); return; }
   if (g.status === 'sold') { showToast('This goat is already sold', 'warning'); return; }
 
+  _sellEditMode   = false;
+  _sellLastEdited = 'rate';
   const totalCost     = parseFloat(g.cost_price) + parseFloat(g.extra_costs || 0);
 
   document.getElementById('sellId').value           = id;
@@ -653,6 +670,11 @@ async function openSellModal(id) {
   document.getElementById('sellFinalMode').value    = '';
   document.getElementById('sellBuyer').value        = g.buyer_name || '';
   document.getElementById('sellPhone').value        = g.buyer_phone || '';
+
+  // Reset palai toggle to OFF by default
+  const palaiEnabledEl = document.getElementById('sellPalaiEnabled');
+  if (palaiEnabledEl) { palaiEnabledEl.checked = false; }
+  document.getElementById('sellPalaiFields').style.display = 'none';
 
   // Reset to Full Payment mode
   document.getElementById('sellPayTypeFull').checked = true;
@@ -676,6 +698,7 @@ async function openSellModal(id) {
     <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>
     <div class="d-item"><span class="d-lbl">Cost Rate/kg</span><span class="d-val" style="color:var(--blue)">₹${fmt(parseFloat(g.weight_kg) > 0 ? Math.round(totalCost / parseFloat(g.weight_kg)) : 0)}</span></div>`;
 
+  document.querySelector('#sellModal .modal-header h2').textContent = '💰 Mark as Sold';
   showModal('sellModal');
   setTimeout(() => document.getElementById('sellRatePerKg').focus(), 150);
 }
@@ -688,22 +711,53 @@ function updateSellPayType() {
   updateSellPreview();
 }
 
+function togglePalaiSection() {
+  const enabled = document.getElementById('sellPalaiEnabled').checked;
+  document.getElementById('sellPalaiFields').style.display = enabled ? '' : 'none';
+  if (!enabled) {
+    document.getElementById('sellPalaiCharges').value = '';
+    document.getElementById('sellGrandTotal').value   = '';
+  }
+  updateSellPreview();
+}
+
+function updateSellFromRate() {
+  _sellLastEdited = 'rate';
+  updateSellPreview();
+}
+
+function updateSellFromTotal() {
+  _sellLastEdited = 'total';
+  updateSellPreview();
+}
+
 function updateSellPreview() {
-  const inputRate     = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
   const effectiveCost = parseFloat(document.getElementById('sellRatePerKg').dataset.cost) || 0;
   const actualWt      = parseFloat(document.getElementById('sellWeight').value) || 0;
   const palaiDays  = parseInt(document.getElementById('sellPalaiDays').value) || 0;
   const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 0;
+  const palaiEnabled = document.getElementById('sellPalaiEnabled')?.checked ?? false;
   const isFull     = document.getElementById('sellPayTypeFull').checked;
   const advance    = isFull ? 0 : (parseFloat(document.getElementById('sellAdvance').value) || 0);
 
-  const sp           = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
-  const palaiCharges = palaiDays > 0 ? palaiDays * palaiRate : 0;
-  const grandTotal   = sp + palaiCharges;
+  let sp;
+  if (_sellLastEdited === 'total') {
+    sp = parseFloat(document.getElementById('sellTotalPrice').value) || 0;
+    if (sp > 0 && actualWt > 0) {
+      document.getElementById('sellRatePerKg').value = (sp / actualWt).toFixed(2);
+    }
+  } else {
+    const inputRate = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
+    sp = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
+    document.getElementById('sellTotalPrice').value = sp > 0 ? sp : '';
+  }
 
-  document.getElementById('sellTotalPrice').value   = sp > 0 ? sp : '';
-  document.getElementById('sellPalaiCharges').value = palaiDays > 0 ? palaiCharges : '';
-  document.getElementById('sellGrandTotal').value   = sp > 0 ? grandTotal : '';
+  const palaiCharges = palaiEnabled && palaiDays > 0 ? palaiDays * palaiRate : 0;
+  const grandTotal   = sp + palaiCharges;
+  if (palaiEnabled) {
+    document.getElementById('sellPalaiCharges').value = palaiDays > 0 ? palaiCharges : '';
+    document.getElementById('sellGrandTotal').value   = sp > 0 ? grandTotal : '';
+  }
 
   const el = document.getElementById('sellPreview');
   if (sp > 0) {
@@ -713,9 +767,9 @@ function updateSellPreview() {
     const profitTxt = profit >= 0
       ? `✅ Profit: ₹${fmt(Math.round(profit))} (${marginPct}% margin)`
       : `❌ Loss: ₹${fmt(Math.round(Math.abs(profit)))}`;
-    const palaiTxt = palaiDays > 0
+    const palaiTxt = palaiEnabled && palaiDays > 0
       ? `  ·  🏠 Palai: ${palaiDays}d x ₹${fmt(palaiRate)} = ₹${fmt(palaiCharges)}`
-      : isFull && !takeToday ? `  ·  🏠 Palai: charged at delivery` : '';
+      : palaiEnabled && isFull && !takeToday ? `  ·  🏠 Palai: charged at delivery` : '';
     const grandTxt = `  ·  Grand Total: ₹${fmt(grandTotal)}`;
     const advTxt   = !isFull && advance > 0 && advance < sp
       ? `  ·  Advance: ₹${fmt(advance)}  ·  Remaining: ₹${fmt(sp - advance)}`
@@ -737,7 +791,6 @@ async function confirmSale(e) {
   const errEl = document.getElementById('sellFormErr');
   errEl.classList.add('hidden');
 
-  const inputRate  = parseFloat(document.getElementById('sellRatePerKg').value);
   const cost       = parseFloat(document.getElementById('sellRatePerKg').dataset.cost);
   const goatId     = document.getElementById('sellRatePerKg').dataset.goatId;
   const isFull     = document.getElementById('sellPayTypeFull').checked;
@@ -749,14 +802,19 @@ async function confirmSale(e) {
   const saleWeight = document.getElementById('sellWeight').value;
   const palaiDays  = parseInt(document.getElementById('sellPalaiDays').value) || 0;
   const palaiRate  = parseFloat(document.getElementById('sellPalaiRate').value) || 150;
+  const palaiEnabled = document.getElementById('sellPalaiEnabled')?.checked ?? false;
   const actualWt   = parseFloat(saleWeight) || 0;
-  const sp         = inputRate > 0 && actualWt > 0 ? Math.round(inputRate * actualWt) : 0;
+  // Determine sp from whichever input was filled (totalPrice takes final precedence if set)
+  const totalPriceVal = parseFloat(document.getElementById('sellTotalPrice').value) || 0;
+  const rateVal       = parseFloat(document.getElementById('sellRatePerKg').value) || 0;
+  const sp            = totalPriceVal > 0 ? Math.round(totalPriceVal)
+                      : (rateVal > 0 && actualWt > 0 ? Math.round(rateVal * actualWt) : 0);
   const effectiveCost = cost;
   const isBooked   = !isFull && advance > 0 && advance < sp;
   const takeToday  = isFull ? (document.getElementById('sellTakeToday')?.checked ?? true) : false;
   const showErr    = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
-  if (!inputRate || inputRate <= 0) return showErr('⚠️ Rate per kg must be greater than 0.');
+  if (sp <= 0)         return showErr('⚠️ Enter a selling rate per kg or total price.');
   if (!actualWt || actualWt <= 0)   return showErr('⚠️ Sale weight is required.');
   if (sp > 10000000)   return showErr('⚠️ Selling price seems too high.');
   if (!buyerName)      return showErr('⚠️ Buyer name is required.');
@@ -765,7 +823,7 @@ async function confirmSale(e) {
   if (!isFull && advance <= 0) return showErr('⚠️ Enter an advance amount, or switch to Full Payment.');
   if (!isFull && advance >= sp) return showErr('⚠️ Advance cannot equal or exceed the selling price.');
   if (!isFull && !advMode) return showErr('⚠️ Please select advance payment mode.');
-  if (isFull && !finalMode) return showErr('⚠️ Please select a payment mode.');
+  if (isFull && !finalMode && !_sellEditMode) return showErr('⚠️ Please select a payment mode.');
   const saleDate = document.getElementById('sellDate').value;
   if (!saleDate)          return showErr('⚠️ Sale date is required.');
   if (saleDate > today()) return showErr('⚠️ Sale date cannot be in the future.');
@@ -773,36 +831,110 @@ async function confirmSale(e) {
 
   setLoading('confirmSaleBtn', true);
   try {
-    const res  = await fetch(`/api/goats/${id}/sell`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const endpoint = _sellEditMode ? `/api/goats/${id}/sale`  : `/api/goats/${id}/sell`;
+    const method   = _sellEditMode ? 'PATCH' : 'POST';
+    const res  = await fetch(endpoint, {
+      method, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selling_price: sp, buyer_name: buyerName, buyer_phone: buyerPhone,
         sale_date: saleDate, sale_weight_kg: saleWeight || null,
         advance_amount: advance, advance_mode: advMode, final_payment_mode: finalMode,
-        palai_days: palaiDays, palai_rate: palaiRate, take_today: takeToday })
+        palai_days: palaiEnabled ? palaiDays : 0,
+        palai_rate: palaiEnabled ? palaiRate : 0,
+        take_today: takeToday })
     });
     const data = await res.json();
     if (!res.ok) { showErr(data.error); setLoading('confirmSaleBtn', false); return; }
     closeModal('sellModal');
-    const profit = sp - effectiveCost;
-    const palaiNote = palaiDays > 0 ? ` · Palai ${palaiDays}d = ₹${fmt(palaiDays * palaiRate)}` : '';
-    if (isBooked) {
-      showToast(`🔖 ${goatId} booked — ₹${fmt(advance)} advance, ₹${fmt(sp - advance)} remaining`, 'info', 5000);
-    } else if (takeToday) {
-      showToast(profit >= 0 ? `📦 ${goatId} sold & out — Profit: ₹${fmt(Math.round(profit))} 🎉${palaiNote}` : `📦 ${goatId} sold & out — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
-        profit >= 0 ? 'success' : 'warning', 5000);
+    if (_sellEditMode) {
+      showToast(`✅ Sale updated for ${goatId}`, 'success', 3000);
+      await loadSold();
+      loadDashboard();
     } else {
-      showToast(profit >= 0 ? `✅ ${goatId} sold, keeping in yard — Profit: ₹${fmt(Math.round(profit))} 🎉` : `✅ ${goatId} sold, in yard — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
-        profit >= 0 ? 'success' : 'warning', 5000);
+      const profit = sp - effectiveCost;
+      const palaiNote = palaiDays > 0 ? ` · Palai ${palaiDays}d = ₹${fmt(palaiDays * palaiRate)}` : '';
+      if (isBooked) {
+        showToast(`🔖 ${goatId} booked — ₹${fmt(advance)} advance, ₹${fmt(sp - advance)} remaining`, 'info', 5000);
+      } else if (takeToday) {
+        showToast(profit >= 0 ? `📦 ${goatId} sold & out — Profit: ₹${fmt(Math.round(profit))} 🎉${palaiNote}` : `📦 ${goatId} sold & out — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
+          profit >= 0 ? 'success' : 'warning', 5000);
+      } else {
+        showToast(profit >= 0 ? `✅ ${goatId} sold, keeping in yard — Profit: ₹${fmt(Math.round(profit))} 🎉` : `✅ ${goatId} sold, in yard — Loss: ₹${fmt(Math.round(Math.abs(profit)))}`,
+          profit >= 0 ? 'success' : 'warning', 5000);
+      }
+      await loadStock();
+      loadDashboard();
     }
-    await loadStock();
-    loadDashboard();
   } catch (err) {
     showErr('Network error: ' + err.message);
     setLoading('confirmSaleBtn', false);
   }
 }
 
-// ── View Goat Details ────────────────────────────────────────
+// ── Edit existing sale ───────────────────────────────────────
+async function openEditSaleModal(id) {
+  const g = await api(`/api/goats/${id}`);
+  if (!g) { showToast('Could not load goat details', 'error'); return; }
+
+  _sellEditMode   = true;
+  _sellLastEdited = 'rate';
+
+  const totalCost = parseFloat(g.cost_price || 0) + parseFloat(g.extra_costs || 0);
+  const sp        = parseFloat(g.selling_price || 0);
+  const advance   = parseFloat(g.advance_amount || 0);
+  const wt        = parseFloat(g.sale_weight_kg || g.weight_kg || 0);
+  const rate      = wt > 0 && sp > 0 ? (sp / wt).toFixed(2) : '';
+
+  document.getElementById('sellId').value           = id;
+  document.getElementById('sellDate').value         = g.sale_date ? String(g.sale_date).slice(0,10) : today();
+  document.getElementById('sellRatePerKg').value    = rate;
+  document.getElementById('sellWeight').value       = g.sale_weight_kg || g.weight_kg || '';
+  document.getElementById('sellTotalPrice').value   = sp || '';
+  document.getElementById('sellPalaiDays').value    = g.agreed_palai_days || '0';
+  document.getElementById('sellPalaiRate').value    = g.holding_rate || '150';
+  document.getElementById('sellPalaiCharges').value = '';
+  document.getElementById('sellGrandTotal').value   = '';
+
+  // Set palai toggle based on whether holding_rate was set > 0
+  const hadPalai = parseFloat(g.holding_rate || 0) > 0;
+  const palaiEnabledEl = document.getElementById('sellPalaiEnabled');
+  if (palaiEnabledEl) palaiEnabledEl.checked = hadPalai;
+  document.getElementById('sellPalaiFields').style.display = hadPalai ? '' : 'none';
+  document.getElementById('sellAdvance').value      = advance || '0';
+  document.getElementById('sellAdvanceMode').value  = g.advance_mode || '';
+  document.getElementById('sellFinalMode').value    = g.final_payment_mode || '';
+  document.getElementById('sellBuyer').value        = g.buyer_name || '';
+  document.getElementById('sellPhone').value        = g.buyer_phone || '';
+
+  const isAdvance = advance > 0 && advance < sp;
+  if (isAdvance) {
+    document.getElementById('sellPayTypeAdv').checked = true;
+    document.getElementById('sellFullSection').style.display = 'none';
+    document.getElementById('sellAdvSection').style.display  = '';
+  } else {
+    document.getElementById('sellPayTypeFull').checked = true;
+    document.getElementById('sellFullSection').style.display = '';
+    document.getElementById('sellAdvSection').style.display  = 'none';
+  }
+
+  document.getElementById('sellRatePerKg').dataset.cost   = totalCost;
+  document.getElementById('sellRatePerKg').dataset.goatId = g.goat_id;
+
+  document.getElementById('sellPreview').classList.add('hidden');
+  document.getElementById('sellFormErr').classList.add('hidden');
+  setLoading('confirmSaleBtn', false);
+
+  document.getElementById('sellInfoBox').innerHTML = `
+    <div class="d-item"><span class="d-lbl">Goat ID</span><span class="d-val">${esc(g.goat_id)}</span></div>
+    <div class="d-item"><span class="d-lbl">Breed</span><span class="d-val">${esc(g.breed || '—')}</span></div>
+    <div class="d-item"><span class="d-lbl">Buy Weight</span><span class="d-val">${g.weight_kg} kg</span></div>
+    <div class="d-item"><span class="d-lbl">Total Cost</span><span class="d-val">₹${fmt(totalCost)}</span></div>`;
+
+  document.querySelector('#sellModal .modal-header h2').textContent = '✏️ Edit Sale';
+  showModal('sellModal');
+  setTimeout(() => document.getElementById('sellBuyer').focus(), 150);
+}
+
+// ── View Goat Details ─────────────────────────────────────────
 async function viewGoat(id) {
   const g = await api(`/api/goats/${id}`);
   if (!g) { showToast('Could not load goat', 'error'); return; }
