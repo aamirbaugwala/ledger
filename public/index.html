@@ -198,11 +198,11 @@
       <input type="hidden" id="sellId" />
       <div class="form-section">Sale Details</div>
       <div class="form-row">
-        <div class="form-group"><label>Rate per kg (₹)</label><input type="number" id="sellRatePerKg" placeholder="e.g. 700" min="1" oninput="updateSellFromRate()" /></div>
+        <div class="form-group"><label>Rate per kg (₹)</label><input type="number" id="sellRatePerKg" placeholder="e.g. 700" min="1" step="0.01" oninput="updateSellFromRate()" /></div>
         <div class="form-group"><label>Sale Weight (kg) *</label><input type="number" id="sellWeight" placeholder="Current weight" step="0.1" min="0.1" required oninput="updateSellPreview()" /></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Total Price (₹) <small style="font-weight:400;color:var(--text-3)">or enter directly</small></label><input type="number" id="sellTotalPrice" placeholder="Auto-calculated or enter total" min="1" oninput="updateSellFromTotal()" /></div>
+        <div class="form-group"><label>Total Price (₹) <small style="font-weight:400;color:var(--text-3)">or enter directly</small></label><input type="number" id="sellTotalPrice" placeholder="Auto-calculated or enter total" min="1" step="0.01" oninput="updateSellFromTotal()" /></div>
         <div class="form-group"><label>Sale Date *</label><input type="date" id="sellDate" required /></div>
       </div>
       <div class="form-section">Palai / Yard Holding <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></div>
